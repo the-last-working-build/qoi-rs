@@ -50,9 +50,19 @@ pub struct ImageDesc {
     pub colorspace: ColorSpace,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedImage {
+    /// Raw RGB or RGBA output bytes.
+    pub pixels: Vec<u8>,
+
+    /// Metadata stored in the QOI header.
+    pub desc: ImageDesc,
+
+    /// Actual number of channels in `pixels`.
+    pub output_channels: Channels,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-// Used by the decoder state machine for the current pixel and index table.
-#[allow(dead_code)]
 pub(crate) struct Pixel {
     pub(crate) r: u8,
     pub(crate) g: u8,
@@ -60,7 +70,6 @@ pub(crate) struct Pixel {
     pub(crate) a: u8,
 }
 
-#[allow(dead_code)]
 impl Pixel {
     pub(crate) const INITIAL: Self = Self {
         r: 0,

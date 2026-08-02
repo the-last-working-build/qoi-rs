@@ -27,6 +27,9 @@ The decoder validates header fields in this order:
 Complete QOI streams end with the eight-byte marker
 `00 00 00 00 00 00 00 01`.
 
+Decoding a complete stream requires at least the 14-byte header and the
+eight-byte trailer. The trailer bytes must match exactly.
+
 ## Pixel Index
 
 Pixels are hashed into the 64-entry index table with:
@@ -34,3 +37,22 @@ Pixels are hashed into the 64-entry index table with:
 ```text
 (r * 3 + g * 5 + b * 7 + a * 11) % 64
 ```
+
+The decoder starts with an opaque black previous pixel `(0, 0, 0, 255)` and a
+zero-initialized 64-entry pixel index.
+
+## Decoding
+
+When no output channel count is requested, the decoder uses the channel count
+declared in the QOI header. When RGB output is requested from an RGBA stream,
+alpha is discarded. When RGBA output is requested from an RGB stream, alpha is
+preserved from the current decoder pixel state, which starts at `255`.
+
+Implemented chunks:
+
+- `QOI_OP_RGB` (`0xfe`) reads `r`, `g`, and `b`; alpha is unchanged.
+- `QOI_OP_RGBA` (`0xff`) reads `r`, `g`, `b`, and `a`.
+- `QOI_OP_INDEX` (`00xxxxxx`) loads the pixel from the 64-entry index.
+
+`QOI_OP_RGB` and `QOI_OP_RGBA` are matched before applying the two-bit operation
+mask.

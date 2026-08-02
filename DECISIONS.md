@@ -23,3 +23,14 @@ contents, and may read beyond the logical chunk region for malformed input.
 
 This is an intentional divergence for malformed input. It does not affect
 behavioral equivalence for valid QOI streams.
+
+## D004 — Preserve source and output channel counts
+
+`ImageDesc::channels` records the channel count declared by the QOI header.
+
+`DecodedImage::output_channels` records the actual channel count of the
+returned pixel buffer. These may differ when the caller requests RGB output
+from an RGBA source or RGBA output from an RGB source.
+
+This mirrors the distinction between `desc->channels` and the `channels`
+argument in the C reference API.
