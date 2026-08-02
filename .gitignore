@@ -2,3 +2,4 @@
 /fuzz/artifacts
 /fuzz/corpus/decode_arbitrary
 /fuzz/target
+/bench/target
