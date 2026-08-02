@@ -1,8 +1,8 @@
 # QOI codec benchmark results
 
-commit: 03fed27
+commit: 390461b
 branch: feat/benchmarks
-tree state: dirty working tree at benchmark build time
+tree state: clean
 operating system: linux
 architecture: x86_64
 cpu: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
@@ -15,11 +15,11 @@ warmup iterations: 10
 measured iterations: 100
 
 fixture       operation       C median    Rust median    Rust/C  encoded bytes        C MiB/s     Rust MiB/s
-flat-rgba     encode        1207300 ns     3833200 ns      3.18          16939        3313.18        1043.51
-flat-rgba     decode        6188400 ns     9562899 ns      1.55          16939         646.37         418.28
-gradient-rgb  encode        8580500 ns    10635200 ns      1.24        2097173         349.63         282.08
-gradient-rgb  decode        7732100 ns    12374000 ns      1.60        2097173         387.99         242.44
-noise-rgba    encode       13364800 ns    15262299 ns      1.14        5238890         299.29         262.08
-noise-rgba    decode        8996800 ns    12529299 ns      1.39        5238890         444.60         319.25
+flat-rgba     encode        1122500 ns     4391000 ns      3.91          16939        3563.47         910.95
+flat-rgba     decode        1400600 ns     5714200 ns      4.08          16939        2855.92         700.01
+gradient-rgb  encode        6770100 ns     8685300 ns      1.28        2097173         443.12         345.41
+gradient-rgb  decode        3912800 ns     8086300 ns      2.07        2097173         766.71         371.00
+noise-rgba    encode        4324900 ns     8782000 ns      2.03        5238890         924.88         455.48
+noise-rgba    decode        4136600 ns     9431800 ns      2.28        5238890         966.98         424.10
 
-checksum: fc845b3d5cd4d4ef
+checksum: 0000000001a8c354
