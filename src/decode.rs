@@ -7,7 +7,15 @@ use crate::{
 const OP_RGB: u8 = 0xfe;
 const OP_RGBA: u8 = 0xff;
 const MASK_2: u8 = 0xc0;
+const MASK_DATA: u8 = !MASK_2;
 const OP_INDEX: u8 = 0x00;
+const OP_DIFF: u8 = 0x40;
+const OP_LUMA: u8 = 0x80;
+const OP_RUN: u8 = 0xc0;
+const OP_INDEX_MAX: u8 = OP_INDEX | MASK_DATA;
+const OP_DIFF_MAX: u8 = OP_DIFF | MASK_DATA;
+const OP_LUMA_MAX: u8 = OP_LUMA | MASK_DATA;
+const OP_RUN_MAX: u8 = OP_RGB - 1;
 
 pub fn decode(
     input: &[u8],
@@ -38,6 +46,14 @@ pub fn decode(
     for _ in 0..expected_pixels {
         let pixel = decoder.next_pixel()?;
         write_pixel(&mut pixels, pixel, output_channels);
+    }
+
+    if decoder.run_remaining != 0 {
+        return Err(DecodeError::TooManyPixels);
+    }
+
+    if decoder.cursor != chunks.len() {
+        return Err(DecodeError::TrailingData);
     }
 
     Ok(DecodedImage {
@@ -90,8 +106,37 @@ impl<'a> Decoder<'a> {
 
                 Pixel { r, g, b, a }
             }
-            byte if byte & MASK_2 == OP_INDEX => self.index[usize::from(byte & 0x3f)],
-            _ => return Err(DecodeError::UnsupportedChunk(byte)),
+            OP_INDEX..=OP_INDEX_MAX => self.index[usize::from(byte & MASK_DATA)],
+            OP_DIFF..=OP_DIFF_MAX => {
+                let dr = ((byte >> 4) & 0x03) as i8 - 2;
+                let dg = ((byte >> 2) & 0x03) as i8 - 2;
+                let db = (byte & 0x03) as i8 - 2;
+
+                Pixel {
+                    r: self.previous.r.wrapping_add_signed(dr),
+                    g: self.previous.g.wrapping_add_signed(dg),
+                    b: self.previous.b.wrapping_add_signed(db),
+                    a: self.previous.a,
+                }
+            }
+            OP_LUMA..=OP_LUMA_MAX => {
+                let second = self.read_byte()?;
+
+                let dg = (byte & 0x3f) as i8 - 32;
+                let dr_dg = ((second >> 4) & 0x0f) as i8 - 8;
+                let db_dg = (second & 0x0f) as i8 - 8;
+
+                Pixel {
+                    r: self.previous.r.wrapping_add_signed(dg + dr_dg),
+                    g: self.previous.g.wrapping_add_signed(dg),
+                    b: self.previous.b.wrapping_add_signed(dg + db_dg),
+                    a: self.previous.a,
+                }
+            }
+            OP_RUN..=OP_RUN_MAX => {
+                self.run_remaining = byte & MASK_DATA;
+                self.previous
+            }
         };
 
         self.previous = pixel;
@@ -272,6 +317,114 @@ mod tests {
         let image = decode(&input, None).expect("decode should succeed");
 
         assert_eq!(image.pixels, vec![1, 2, 3, 1, 2, 3]);
+    }
+
+    #[test]
+    fn decodes_diff_with_wrapping_arithmetic() {
+        let diff = OP_DIFF | (1 << 4) | (2 << 2) | 3;
+        let input = file(1, 1, Channels::Rgba, &[diff]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![255, 0, 1, 255]);
+    }
+
+    #[test]
+    fn decodes_luma_relative_differences() {
+        let input = file(
+            2,
+            1,
+            Channels::Rgba,
+            &[
+                OP_RGB,
+                100,
+                100,
+                100,
+                OP_LUMA | (32 + 5),
+                ((8 + 2) << 4) | (8 - 3),
+            ],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![100, 100, 100, 255, 107, 105, 102, 255]);
+    }
+
+    #[test]
+    fn rejects_luma_chunk_missing_second_byte() {
+        assert_eq!(
+            decode(&file(1, 1, Channels::Rgb, &[OP_LUMA]), None),
+            Err(DecodeError::TruncatedChunk)
+        );
+    }
+
+    #[test]
+    fn decodes_run_length_one_of_previous_pixel() {
+        let input = file(2, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_RUN]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![1, 2, 3, 1, 2, 3]);
+    }
+
+    #[test]
+    fn decodes_maximum_run_of_62_pixels() {
+        let input = file(62, 1, Channels::Rgb, &[OP_RUN | 61]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![0; 62 * 3]);
+    }
+
+    #[test]
+    fn run_continuation_does_not_consume_input() {
+        let input = file(
+            4,
+            1,
+            Channels::Rgb,
+            &[OP_RGB, 10, 20, 30, OP_RUN | 1, OP_RGB, 1, 2, 3],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(
+            image.pixels,
+            vec![10, 20, 30, 10, 20, 30, 10, 20, 30, 1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn decodes_run_of_initial_opaque_black_pixel() {
+        let input = file(1, 1, Channels::Rgba, &[OP_RUN]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn rejects_run_exceeding_declared_pixel_count() {
+        let input = file(1, 1, Channels::Rgb, &[OP_RUN | 1]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TooManyPixels));
+    }
+
+    #[test]
+    fn run_chunk_indexes_the_current_pixel() {
+        let initial_hash = Pixel::INITIAL.hash() as u8;
+
+        let input = file(2, 1, Channels::Rgba, &[OP_RUN, OP_INDEX | initial_hash]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![0, 0, 0, 255, 0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn rejects_unused_chunk_data() {
+        let input = file(1, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_INDEX]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TrailingData));
     }
 
     #[test]

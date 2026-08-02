@@ -20,6 +20,8 @@ multi-byte chunks before reading their operands.
 
 The pinned C decoder reserves the final eight bytes but does not verify their
 contents, and may read beyond the logical chunk region for malformed input.
+It may also ignore a final run that exceeds the declared pixel count or unused
+chunk bytes before the end marker.
 
 This is an intentional divergence for malformed input. It does not affect
 behavioral equivalence for valid QOI streams.

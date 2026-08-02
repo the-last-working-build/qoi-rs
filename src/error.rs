@@ -12,8 +12,8 @@ pub enum DecodeError {
     SizeOverflow,
     InvalidEndMarker,
     TruncatedChunk,
-    UnsupportedChunk(u8),
     TooManyPixels,
+    TrailingData,
 }
 
 impl fmt::Display for DecodeError {
@@ -33,10 +33,8 @@ impl fmt::Display for DecodeError {
             Self::SizeOverflow => formatter.write_str("image size calculation overflowed"),
             Self::InvalidEndMarker => formatter.write_str("invalid QOI end marker"),
             Self::TruncatedChunk => formatter.write_str("truncated QOI chunk"),
-            Self::UnsupportedChunk(value) => {
-                write!(formatter, "unsupported QOI chunk: {value:#04x}")
-            }
             Self::TooManyPixels => formatter.write_str("chunk exceeds expected pixel count"),
+            Self::TrailingData => formatter.write_str("unused chunk data remains after the image"),
         }
     }
 }
