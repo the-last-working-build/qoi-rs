@@ -1,0 +1,29 @@
+[package]
+name = "qoi_rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+qoi_rs = { path = ".." }
+
+[build-dependencies]
+cc = "1"
+
+[[bin]]
+name = "differential"
+path = "fuzz_targets/differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_arbitrary"
+path = "fuzz_targets/decode_arbitrary.rs"
+test = false
+doc = false
+bench = false

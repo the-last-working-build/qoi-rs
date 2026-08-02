@@ -1,0 +1,21 @@
+Date: 2026-08-02T18:07:04+05:30
+Commit: 715cfd3 plus working tree changes for feat/fuzz-and-ci
+Platform: Linux SattysPC 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 GNU/Linux
+Compiler: rustc 1.99.0-nightly (73dc9167f 2026-08-01); cc (GCC) 16.1.1 20260430
+Command: cargo +nightly fuzz run differential -- -max_total_time=300
+Duration: 301 seconds
+Executions: 1502450
+Corpus size: 154 files / 1433 bytes
+Crashes: 0
+Result: PASS, no crashes
+
+Date: 2026-08-02T18:07:04+05:30
+Commit: 715cfd3 plus working tree changes for feat/fuzz-and-ci
+Platform: Linux SattysPC 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 GNU/Linux
+Compiler: rustc 1.99.0-nightly (73dc9167f 2026-08-01); cc (GCC) 16.1.1 20260430
+Command: cargo +nightly fuzz run decode_arbitrary -- -max_total_time=300
+Duration: 301 seconds
+Executions: 1917549
+Corpus size: 85 files / 10903 bytes
+Crashes: 0
+Result: PASS, no crashes
