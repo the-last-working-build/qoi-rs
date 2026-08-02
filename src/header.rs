@@ -104,6 +104,13 @@ mod tests {
     }
 
     #[test]
+    fn checks_magic_before_dimensions() {
+        let input = [0; HEADER_SIZE];
+
+        assert_eq!(parse_header(&input), Err(DecodeError::InvalidMagic));
+    }
+
+    #[test]
     fn rejects_zero_width() {
         let input = header(0, 1, 3, 0);
 
@@ -141,6 +148,15 @@ mod tests {
         let input = header(3, PIXELS_MAX / 3, 3, 0);
 
         assert_eq!(parse_header(&input), Err(DecodeError::ImageTooLarge));
+    }
+
+    #[test]
+    fn accepts_dimensions_below_c_pixel_limit() {
+        let width = 3;
+        let height = PIXELS_MAX / width - 1;
+        let input = header(width, height, 3, 0);
+
+        assert!(parse_header(&input).is_ok());
     }
 
     #[test]
