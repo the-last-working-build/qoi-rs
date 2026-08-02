@@ -1,5 +1,7 @@
 Date: 2026-08-02T18:07:04+05:30
-Commit: 715cfd3 plus working tree changes for feat/fuzz-and-ci
+Tested tree: 86473399bc8ab8e43b97e66dd6f62ddcca80b136
+Run provenance: Executed before commit while based on 715cfd3; the tested
+fuzzing and source changes were committed unchanged as 8647339.
 Platform: Linux SattysPC 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 GNU/Linux
 Compiler: rustc 1.99.0-nightly (73dc9167f 2026-08-01); cc (GCC) 16.1.1 20260430
 Command: cargo +nightly fuzz run differential -- -max_total_time=300
@@ -10,7 +12,9 @@ Crashes: 0
 Result: PASS, no crashes
 
 Date: 2026-08-02T18:07:04+05:30
-Commit: 715cfd3 plus working tree changes for feat/fuzz-and-ci
+Tested tree: 86473399bc8ab8e43b97e66dd6f62ddcca80b136
+Run provenance: Executed before commit while based on 715cfd3; the tested
+fuzzing and source changes were committed unchanged as 8647339.
 Platform: Linux SattysPC 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 GNU/Linux
 Compiler: rustc 1.99.0-nightly (73dc9167f 2026-08-01); cc (GCC) 16.1.1 20260430
 Command: cargo +nightly fuzz run decode_arbitrary -- -max_total_time=300
