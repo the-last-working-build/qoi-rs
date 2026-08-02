@@ -18,23 +18,5 @@ jobs:
       - name: Install Rust toolchain
         run: rustup show
 
-      - name: Check formatting
-        run: cargo fmt --check
-
-      - name: Check fuzz crate formatting
-        run: cargo fmt --manifest-path fuzz/Cargo.toml --check
-
-      - name: Check benchmark formatting
-        run: cargo fmt --manifest-path bench/Cargo.toml --check
-
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Lint benchmark
-        run: cargo clippy --release --manifest-path bench/Cargo.toml -- -D warnings
-
-      - name: Run tests
-        run: cargo test
-
-      - name: Verify pinned source hashes
-        run: sha256sum -c SOURCE_HASHES.txt
+      - name: Run verification
+        run: ./scripts/verify.sh

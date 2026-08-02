@@ -2,5 +2,11 @@
 name = "qoi_rs"
 version = "0.1.0"
 edition = "2024"
+description = "A minimal and auditable safe Rust port of the QOI reference codec"
+repository = "https://github.com/the-last-working-build/qoi-rs"
+license = "MIT"
+readme = "README.md"
+keywords = ["qoi", "image", "codec", "encoder", "decoder"]
+categories = ["encoding", "multimedia::images"]
 
 [dependencies]
