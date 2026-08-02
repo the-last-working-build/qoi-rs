@@ -1,14 +1,10 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+mod error;
+mod header;
+mod types;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use error::DecodeError;
+pub use types::{Channels, ColorSpace, ImageDesc};
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub fn inspect_header(input: &[u8]) -> Result<ImageDesc, DecodeError> {
+    header::parse_header(input)
 }
