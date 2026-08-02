@@ -351,6 +351,15 @@ mod tests {
     }
 
     #[test]
+    fn decodes_luma_with_wrapping_arithmetic() {
+        let input = file(1, 1, Channels::Rgba, &[OP_LUMA, 0]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![216, 224, 216, 255]);
+    }
+
+    #[test]
     fn rejects_luma_chunk_missing_second_byte() {
         assert_eq!(
             decode(&file(1, 1, Channels::Rgb, &[OP_LUMA]), None),

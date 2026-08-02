@@ -95,5 +95,5 @@ A successful strict decode requires:
 3. All chunk bytes before the end marker have been consumed.
 4. The exact eight-byte end marker is present.
 
-The final two conditions are stricter than the pinned C decoder for malformed
+The final three conditions are stricter than the pinned C decoder for malformed
 streams and are intentional safety validations.
