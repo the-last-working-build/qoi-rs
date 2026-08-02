@@ -1,0 +1,11 @@
+[package]
+name = "qoi-rs-bench"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[dependencies]
+qoi_rs = { path = ".." }
+
+[build-dependencies]
+cc = "1"
