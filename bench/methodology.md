@@ -34,13 +34,23 @@ encoder.
 Allocation and codec work are included. Fixture generation and file I/O are
 excluded.
 
+Timed C operations observe the C-allocated output in place and then free it.
+They do not copy the output into a Rust-owned buffer. Pre-benchmark correctness
+checks use copying helpers so encoded and decoded bytes can be compared directly.
+
+Timed Rust operations observe the returned Rust-owned output before it is
+dropped. Both implementations therefore measure allocation, codec work, an O(1)
+observation, and deallocation.
+
 ## Procedure
 
 - 10 warm-up iterations
 - 100 measured iterations per fixture and operation
+- paired C/Rust measurements alternate order each iteration
 - monotonic high-resolution clock
 - results reported as median nanoseconds and throughput
-- output bytes are consumed to prevent dead-code elimination
+- output pointer, length and three bytes are observed to prevent dead-code
+  elimination without scanning the full output
 
 ## Limitations
 

@@ -86,47 +86,43 @@ fn main() {
             fixture.name
         );
 
-        checksum ^= consume(&c_encoded);
-        checksum ^= consume(&c_decoded);
-        checksum ^= consume(&rust_decoded.pixels);
+        checksum ^= observe(&c_encoded);
+        checksum ^= observe(&c_decoded);
+        checksum ^= observe(&rust_decoded.pixels);
 
-        let c_encode_result = measure(|| {
-            let encoded = c_encode(&fixture.pixels, fixture.desc).expect("C encode");
-            consume(&encoded)
-        });
-        checksum ^= c_encode_result.checksum;
-
-        let rust_encode_result = measure(|| {
-            let encoded = encode(&fixture.pixels, fixture.desc).expect("Rust encode");
-            consume(&encoded)
-        });
-        checksum ^= rust_encode_result.checksum;
+        let encode_result = measure_pair(
+            || c_encode_observed(&fixture.pixels, fixture.desc),
+            || {
+                let encoded = encode(&fixture.pixels, fixture.desc).expect("Rust encode");
+                observe(&encoded)
+            },
+        );
+        checksum ^= encode_result.c.checksum;
+        checksum ^= encode_result.rust.checksum;
 
         print_row(
             fixture,
             "encode",
-            c_encode_result.median,
-            rust_encode_result.median,
+            encode_result.c.median,
+            encode_result.rust.median,
             c_encoded.len(),
         );
 
-        let c_decode_result = measure(|| {
-            let decoded = c_decode(&c_encoded).expect("C decode");
-            consume(&decoded)
-        });
-        checksum ^= c_decode_result.checksum;
-
-        let rust_decode_result = measure(|| {
-            let decoded = decode(&c_encoded, None).expect("Rust decode");
-            consume(&decoded.pixels)
-        });
-        checksum ^= rust_decode_result.checksum;
+        let decode_result = measure_pair(
+            || c_decode_observed(&c_encoded),
+            || {
+                let decoded = decode(&c_encoded, None).expect("Rust decode");
+                observe(&decoded.pixels)
+            },
+        );
+        checksum ^= decode_result.c.checksum;
+        checksum ^= decode_result.rust.checksum;
 
         print_row(
             fixture,
             "decode",
-            c_decode_result.median,
-            rust_decode_result.median,
+            decode_result.c.median,
+            decode_result.rust.median,
             c_encoded.len(),
         );
     }
@@ -218,27 +214,96 @@ struct Measurement {
     checksum: u64,
 }
 
-fn measure(mut operation: impl FnMut() -> u64) -> Measurement {
-    let mut checksum = 0u64;
+struct PairedMeasurement {
+    c: Measurement,
+    rust: Measurement,
+}
 
-    for _ in 0..WARMUP_ITERATIONS {
-        checksum ^= black_box(operation());
+fn measure_pair(
+    mut c_operation: impl FnMut() -> u64,
+    mut rust_operation: impl FnMut() -> u64,
+) -> PairedMeasurement {
+    let mut c_checksum = 0u64;
+    let mut rust_checksum = 0u64;
+
+    for iteration in 0..WARMUP_ITERATIONS {
+        run_pair(
+            iteration,
+            &mut c_operation,
+            &mut rust_operation,
+            &mut c_checksum,
+            &mut rust_checksum,
+            None,
+        );
     }
 
-    let mut samples = Vec::with_capacity(MEASURED_ITERATIONS);
+    let mut c_samples = Vec::with_capacity(MEASURED_ITERATIONS);
+    let mut rust_samples = Vec::with_capacity(MEASURED_ITERATIONS);
 
-    for _ in 0..MEASURED_ITERATIONS {
-        let start = Instant::now();
-        checksum ^= black_box(operation());
-        samples.push(start.elapsed());
+    for iteration in 0..MEASURED_ITERATIONS {
+        run_pair(
+            iteration,
+            &mut c_operation,
+            &mut rust_operation,
+            &mut c_checksum,
+            &mut rust_checksum,
+            Some((&mut c_samples, &mut rust_samples)),
+        );
     }
 
-    samples.sort_by(compare_duration);
+    c_samples.sort_by(compare_duration);
+    rust_samples.sort_by(compare_duration);
 
-    Measurement {
-        median: samples[samples.len() / 2],
-        checksum,
+    PairedMeasurement {
+        c: Measurement {
+            median: c_samples[c_samples.len() / 2],
+            checksum: c_checksum,
+        },
+        rust: Measurement {
+            median: rust_samples[rust_samples.len() / 2],
+            checksum: rust_checksum,
+        },
     }
+}
+
+fn run_pair(
+    iteration: usize,
+    c_operation: &mut impl FnMut() -> u64,
+    rust_operation: &mut impl FnMut() -> u64,
+    c_checksum: &mut u64,
+    rust_checksum: &mut u64,
+    samples: Option<(&mut Vec<Duration>, &mut Vec<Duration>)>,
+) {
+    match samples {
+        Some((c_samples, rust_samples)) => {
+            if iteration.is_multiple_of(2) {
+                run_measured(c_operation, c_checksum, c_samples);
+                run_measured(rust_operation, rust_checksum, rust_samples);
+            } else {
+                run_measured(rust_operation, rust_checksum, rust_samples);
+                run_measured(c_operation, c_checksum, c_samples);
+            }
+        }
+        None => {
+            if iteration.is_multiple_of(2) {
+                *c_checksum ^= black_box(c_operation());
+                *rust_checksum ^= black_box(rust_operation());
+            } else {
+                *rust_checksum ^= black_box(rust_operation());
+                *c_checksum ^= black_box(c_operation());
+            }
+        }
+    }
+}
+
+fn run_measured(
+    operation: &mut impl FnMut() -> u64,
+    checksum: &mut u64,
+    samples: &mut Vec<Duration>,
+) {
+    let start = Instant::now();
+    *checksum ^= black_box(operation());
+    samples.push(start.elapsed());
 }
 
 fn c_encode(pixels: &[u8], desc: ImageDesc) -> Option<Vec<u8>> {
@@ -290,15 +355,64 @@ fn c_decode(qoi: &[u8]) -> Option<Vec<u8>> {
     Some(decoded)
 }
 
-fn consume(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf29ce484222325u64;
+fn c_encode_observed(pixels: &[u8], desc: ImageDesc) -> u64 {
+    let mut out = ptr::null_mut();
+    let mut out_len = 0;
 
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
+    let ok = unsafe {
+        qoi_bench_encode(
+            pixels.as_ptr(),
+            desc.width,
+            desc.height,
+            desc.channels as u8,
+            desc.colorspace as u8,
+            &mut out,
+            &mut out_len,
+        )
+    };
+
+    assert!(ok != 0 && !out.is_null() && out_len >= 0);
+
+    let bytes = unsafe { slice::from_raw_parts(out, out_len as usize) };
+    let token = observe(bytes);
+
+    unsafe {
+        qoi_bench_free(out.cast());
     }
 
-    black_box(hash)
+    token
+}
+
+fn c_decode_observed(qoi: &[u8]) -> u64 {
+    assert!(qoi.len() <= c_int::MAX as usize);
+
+    let mut out = ptr::null_mut();
+    let mut out_len = 0;
+
+    let ok =
+        unsafe { qoi_bench_decode(qoi.as_ptr(), qoi.len() as c_int, 0, &mut out, &mut out_len) };
+
+    assert!(ok != 0 && !out.is_null() && out_len >= 0);
+
+    let bytes = unsafe { slice::from_raw_parts(out, out_len as usize) };
+    let token = observe(bytes);
+
+    unsafe {
+        qoi_bench_free(out.cast());
+    }
+
+    token
+}
+
+fn observe(bytes: &[u8]) -> u64 {
+    let len = bytes.len();
+    let first = bytes.first().copied().unwrap_or(0);
+    let middle = bytes.get(len / 2).copied().unwrap_or(0);
+    let last = bytes.last().copied().unwrap_or(0);
+
+    black_box((bytes.as_ptr(), len, first, middle, last));
+
+    (len as u64) ^ (u64::from(first) << 8) ^ (u64::from(middle) << 16) ^ (u64::from(last) << 24)
 }
 
 fn print_row(
