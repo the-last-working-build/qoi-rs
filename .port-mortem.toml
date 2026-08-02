@@ -1,0 +1,5 @@
+track = "A"
+source_language = "C"
+target_language = "Rust"
+source_url = "https://github.com/phoboslab/qoi"
+kickoff_hash = "97bacc86a9c4abf5a2d452102dc26546c4c670b9"

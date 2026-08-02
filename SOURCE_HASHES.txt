@@ -1,0 +1,3 @@
+7de6fca1a285b1c20d38f2723dec8b774eb9f144edb9710800a95feeea09375a  reference/qoi/qoi.h
+3b1bc1fa161d770cca3f10438b6251000dab586fec85861e15804d7a828151ac  reference/qoi/qoifuzz.c
+0ee44a4ab9e71762f4036b34b7bdfbbc732d3d25dfb91e19423ad2b0037e4478  reference/qoi/Makefile
