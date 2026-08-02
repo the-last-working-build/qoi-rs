@@ -36,3 +36,12 @@ from an RGBA source or RGBA output from an RGB source.
 
 This mirrors the distinction between `desc->channels` and the `channels`
 argument in the C reference API.
+
+## D005 — Reference-oriented project scope
+
+The project is maintained as an auditable port of a pinned QOI reference
+implementation rather than as a drop-in replacement for every existing Rust
+QOI library.
+
+Correctness evidence, explicit compatibility decisions and implementation
+clarity take priority over API breadth.

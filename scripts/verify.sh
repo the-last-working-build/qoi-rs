@@ -14,5 +14,6 @@ cargo clippy --release --manifest-path bench/Cargo.toml -- -D warnings
 
 cargo test --locked
 cargo build --release --locked
+cargo build --release --manifest-path bench/Cargo.toml --locked
 
 echo "All verification checks passed."

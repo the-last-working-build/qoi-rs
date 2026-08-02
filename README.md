@@ -1,15 +1,19 @@
 # qoi-rs
 
-`qoi-rs` is a safe Rust port of the pinned QOI reference encoder and decoder.
-The production library exposes a small in-memory API for encoding raw RGB/RGBA
-pixels to QOI bytes and decoding QOI bytes back to raw pixels, with C-reference
-compatibility tests, fuzzing evidence and a reproducible benchmark report.
+[![CI](https://github.com/the-last-working-build/qoi-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/the-last-working-build/qoi-rs/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+`qoi-rs` is a minimal, auditable, safe Rust port of the pinned QOI reference
+encoder and decoder. The production library exposes a small in-memory API for
+encoding raw RGB/RGBA pixels to QOI bytes and decoding QOI bytes back to raw
+pixels, with C-reference compatibility tests, fuzzing evidence and a
+reproducible benchmark report.
 
 ## Highlights
 
 - Entirely safe production Rust, enforced with `#![forbid(unsafe_code)]`.
-- Byte-for-byte C-compatible encoding for the deterministic and fuzzed valid
-  inputs tested so far.
+- Byte-for-byte encoder agreement with the pinned C implementation across
+  deterministic and fuzz-generated test inputs.
 - Strict malformed-input validation for headers, chunk bounds, pending runs,
   trailing data and the exact end marker.
 - Deterministic C/Rust differential tests plus differential and arbitrary-input
@@ -142,10 +146,12 @@ individual `Vec::push` operations.
 These optimizations were intentionally deferred until after correctness was
 established through deterministic differential testing and fuzzing.
 
-The concise conclusion is: the safe Rust port is byte-for-byte
-encoder-compatible and behaviorally equivalent on valid inputs, but currently
-runs about 1.28x-4.08x slower than the pinned C implementation across the
-selected workloads.
+The safe Rust port produced byte-for-byte compatible encodings and equivalent
+decoding results across the deterministic and fuzz-generated valid inputs
+tested.
+
+The Rust implementation is currently approximately 1.28x-4.08x slower than the
+pinned C implementation across the selected benchmark workloads.
 
 ## Reproducing The Results
 
@@ -194,19 +200,45 @@ created by Dominic Szablewski and licensed under the MIT License.
 
 The Rust port is licensed under the terms in [LICENSE](LICENSE).
 
-## Port Mortem 2026
+## Project Goals
 
-- Event: [Port Mortem 2026](https://portmortem.devfolio.co/)
-- Track: Track A, C to Rust
-- Pinned source commit: `97bacc86a9c4abf5a2d452102dc26546c4c670b9`
-- Demo video: pending final recording
+`qoi-rs` is a small, auditable Rust port of the pinned QOI C reference
+implementation.
 
-Suggested five-minute demo structure:
+The project aims to:
 
-- 0:00-0:30: QOI and the porting goal.
-- 0:30-1:10: Pinned C source, hashes and safe-Rust architecture.
-- 1:10-2:00: Public encode/decode API and strict malformed-input handling.
-- 2:00-3:00: C/Rust byte equivalence and cross-decoding tests.
-- 3:00-3:40: Fuzzing results and zero crashes.
-- 3:40-4:30: Fair benchmark methodology and honest performance result.
-- 4:30-5:00: Run `./scripts/verify.sh` and summarize the outcome.
+- Preserve the reference encoder's deterministic output.
+- Decode valid QOI streams equivalently to the reference implementation.
+- Use safe Rust throughout the production library.
+- Reject malformed inputs without out-of-bounds reads or unchecked arithmetic.
+- Make compatibility decisions explicit and testable.
+- Maintain reproducible differential, fuzzing and benchmark evidence.
+
+## Non-Goals
+
+The project does not currently aim to:
+
+- Be the fastest available QOI implementation.
+- Provide streaming I/O APIs.
+- Support `no_std`.
+- Replace more mature general-purpose Rust QOI crates.
+- Preserve the C decoder's permissive behavior for malformed streams.
+
+## Project Status
+
+The QOI encoder and decoder are feature-complete for the implemented QOI 1.0
+format operations.
+
+Current status:
+
+- All six QOI chunk operations are supported.
+- The encoder is compared byte-for-byte with the pinned C encoder.
+- The decoder is cross-checked against C-produced streams.
+- The production library forbids unsafe Rust.
+- Strict malformed-input checks are intentional and documented.
+- The public API should still be considered experimental until version 1.0.
+
+## Project Origin
+
+This project began as a time-bounded C-to-Rust porting exercise in August 2026.
+It is now maintained as an independent Rust port and codec-engineering project.
