@@ -97,3 +97,24 @@ A successful strict decode requires:
 
 The final three conditions are stricter than the pinned C decoder for malformed
 streams and are intentional safety validations.
+
+## Encoding
+
+Encoding validates dimensions with the same C compatibility pixel-limit guard
+used by header parsing, and the raw pixel buffer length must be exactly
+`width * height * channels`.
+
+The encoder writes the 14-byte header, then processes pixels in source order
+with the initial previous pixel `(0, 0, 0, 255)` and a zero-initialized index.
+Its chunk decision order matches the pinned C reference:
+
+1. Accumulate equal consecutive pixels into a RUN.
+2. Flush a pending RUN before encoding a changed pixel.
+3. Use INDEX when the current hash slot already contains the pixel.
+4. Otherwise update the index slot with the current pixel.
+5. If alpha is unchanged, try DIFF, then LUMA, then RGB.
+6. If alpha changed, use RGBA.
+7. Append the exact eight-byte end marker.
+
+Signed channel differences use wrapping `u8` subtraction interpreted as `i8`,
+matching the pinned C reference behavior.

@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use qoi_rs::{Channels, decode};
+use qoi_rs::{Channels, ColorSpace, ImageDesc, decode, encode};
 
 #[derive(Debug)]
 struct Case {
@@ -17,7 +17,7 @@ struct Case {
 }
 
 #[test]
-fn c_encode_then_rust_decode_matches_raw_pixels() {
+fn c_and_rust_codecs_agree_on_deterministic_fixtures() {
     let exe = compile_qoi_ref();
     let work_dir = work_dir();
 
@@ -32,7 +32,8 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
         );
 
         let raw_path = work_dir.join(format!("{}.raw", case.name));
-        let qoi_path = work_dir.join(format!("{}.qoi", case.name));
+        let c_qoi_path = work_dir.join(format!("{}.c.qoi", case.name));
+        let rust_qoi_path = work_dir.join(format!("{}.rust.qoi", case.name));
         let c_decoded_path = work_dir.join(format!("{}.c-decoded.raw", case.name));
 
         fs::write(&raw_path, &case.pixels).expect("write raw fixture");
@@ -46,12 +47,18 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
                 &(case.channels.count()).to_string(),
                 &case.colorspace.to_string(),
                 raw_path.to_str().expect("utf-8 raw path"),
-                qoi_path.to_str().expect("utf-8 qoi path"),
+                c_qoi_path.to_str().expect("utf-8 qoi path"),
             ],
         );
 
-        let qoi = fs::read(&qoi_path).expect("read C-encoded qoi file");
-        let decoded = decode(&qoi, None).expect("Rust decode should succeed");
+        let c_qoi = fs::read(&c_qoi_path).expect("read C-encoded qoi file");
+        let rust_qoi = encode(&case.pixels, case.desc()).expect("Rust encode should succeed");
+
+        assert_eq!(rust_qoi, c_qoi, "{}", case.name);
+
+        fs::write(&rust_qoi_path, &rust_qoi).expect("write Rust-encoded qoi file");
+
+        let decoded = decode(&c_qoi, None).expect("Rust decode should succeed");
 
         assert_eq!(decoded.pixels, case.pixels, "{}", case.name);
         assert_eq!(decoded.desc.width, case.width, "{}", case.name);
@@ -69,7 +76,7 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
             &[
                 "decode",
                 "0",
-                qoi_path.to_str().expect("utf-8 qoi path"),
+                rust_qoi_path.to_str().expect("utf-8 qoi path"),
                 c_decoded_path.to_str().expect("utf-8 decoded path"),
             ],
         );
@@ -77,6 +84,15 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
         assert_eq!(
             fs::read(&c_decoded_path).expect("read C-decoded raw file"),
             case.pixels,
+            "{}",
+            case.name
+        );
+
+        let rust_decoded_from_rust_qoi =
+            decode(&rust_qoi, None).expect("Rust decode of Rust encode should succeed");
+
+        assert_eq!(
+            rust_decoded_from_rust_qoi.pixels, case.pixels,
             "{}",
             case.name
         );
@@ -90,13 +106,13 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
                 &[
                     "decode",
                     &requested.count().to_string(),
-                    qoi_path.to_str().expect("utf-8 qoi path"),
+                    c_qoi_path.to_str().expect("utf-8 qoi path"),
                     c_decoded_path.to_str().expect("utf-8 decoded path"),
                 ],
             );
 
             let c_pixels = fs::read(&c_decoded_path).expect("read C-decoded pixels");
-            let rust_image = decode(&qoi, Some(requested))
+            let rust_image = decode(&c_qoi, Some(requested))
                 .expect("Rust requested-channel decode should succeed");
 
             assert_eq!(
@@ -106,6 +122,17 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
                 case.name,
                 requested.count()
             );
+        }
+    }
+}
+
+impl Case {
+    fn desc(&self) -> ImageDesc {
+        ImageDesc {
+            width: self.width,
+            height: self.height,
+            channels: self.channels,
+            colorspace: ColorSpace::try_from(self.colorspace).expect("fixture colorspace"),
         }
     }
 }
