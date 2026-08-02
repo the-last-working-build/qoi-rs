@@ -13,6 +13,7 @@ pub enum DecodeError {
     InvalidEndMarker,
     TruncatedChunk,
     TooManyPixels,
+    TrailingData,
 }
 
 impl fmt::Display for DecodeError {
@@ -33,6 +34,7 @@ impl fmt::Display for DecodeError {
             Self::InvalidEndMarker => formatter.write_str("invalid QOI end marker"),
             Self::TruncatedChunk => formatter.write_str("truncated QOI chunk"),
             Self::TooManyPixels => formatter.write_str("chunk exceeds expected pixel count"),
+            Self::TrailingData => formatter.write_str("unused chunk data remains after the image"),
         }
     }
 }

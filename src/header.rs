@@ -2,8 +2,6 @@ use crate::{ColorSpace, DecodeError, ImageDesc, types::Channels};
 
 const MAGIC: &[u8; 4] = b"qoif";
 pub(crate) const HEADER_SIZE: usize = 14;
-// Used when full stream validation lands with the decoder state machine.
-#[allow(dead_code)]
 pub(crate) const END_MARKER: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
 const PIXELS_MAX: u32 = 400_000_000;
 
