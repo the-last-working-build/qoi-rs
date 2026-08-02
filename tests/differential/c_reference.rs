@@ -80,6 +80,33 @@ fn c_encode_then_rust_decode_matches_raw_pixels() {
             "{}",
             case.name
         );
+
+        for requested in [Channels::Rgb, Channels::Rgba] {
+            let c_decoded_path =
+                work_dir.join(format!("{}.c-decoded-{}.raw", case.name, requested.count()));
+
+            run(
+                &exe,
+                &[
+                    "decode",
+                    &requested.count().to_string(),
+                    qoi_path.to_str().expect("utf-8 qoi path"),
+                    c_decoded_path.to_str().expect("utf-8 decoded path"),
+                ],
+            );
+
+            let c_pixels = fs::read(&c_decoded_path).expect("read C-decoded pixels");
+            let rust_image = decode(&qoi, Some(requested))
+                .expect("Rust requested-channel decode should succeed");
+
+            assert_eq!(
+                rust_image.pixels,
+                c_pixels,
+                "{} requested {} channels",
+                case.name,
+                requested.count()
+            );
+        }
     }
 }
 
@@ -94,7 +121,9 @@ fn compile_qoi_ref() -> PathBuf {
 
     fs::create_dir_all(exe.parent().expect("executable parent")).expect("create build directory");
 
-    let output = Command::new("cc")
+    let compiler = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
+
+    let output = Command::new(compiler)
         .arg("-std=c99")
         .arg("-O2")
         .arg(&source)
@@ -156,6 +185,14 @@ fn cases() -> Vec<Case> {
             channels: Channels::Rgb,
             colorspace: 0,
             pixels: repeat_rgb(&[[7, 8, 9]], 8),
+        },
+        Case {
+            name: "rgb_nonconsecutive_index_reuse",
+            width: 3,
+            height: 1,
+            channels: Channels::Rgb,
+            colorspace: 0,
+            pixels: rgb(&[[1, 2, 3], [10, 20, 30], [1, 2, 3]]),
         },
         Case {
             name: "rgb_small_channel_deltas",
