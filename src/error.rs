@@ -40,3 +40,31 @@ impl fmt::Display for DecodeError {
 }
 
 impl std::error::Error for DecodeError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EncodeError {
+    ZeroWidth,
+    ZeroHeight,
+    ImageTooLarge,
+    SizeOverflow,
+    InvalidPixelBufferLength { expected: usize, actual: usize },
+}
+
+impl fmt::Display for EncodeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ZeroWidth => formatter.write_str("image width is zero"),
+            Self::ZeroHeight => formatter.write_str("image height is zero"),
+            Self::ImageTooLarge => formatter.write_str("image exceeds the supported size"),
+            Self::SizeOverflow => formatter.write_str("image size calculation overflowed"),
+            Self::InvalidPixelBufferLength { expected, actual } => {
+                write!(
+                    formatter,
+                    "invalid pixel buffer length: expected {expected}, got {actual}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for EncodeError {}
