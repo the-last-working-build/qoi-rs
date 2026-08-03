@@ -1,0 +1,150 @@
+# QOI optimization 004 benchmark and validation results
+
+decision: rejected; production code unchanged
+baseline production commit: 60341df081620a6154b51a98a6b6248c8cca17fe
+baseline tree state: clean
+branch: perf/hash-index-update
+operating system: Arch Linux under WSL2, Linux 6.18.33.2-microsoft-standard-WSL2
+architecture: x86_64
+cpu: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
+rust compiler: rustc 1.96.0 (ac68faa20 2026-05-25)
+rust LLVM: 22.1.2
+c compiler: cc (GCC) 16.1.1 20260430
+perf: perf version 7.0.10-1
+rust optimization: release
+c optimization: -O3 -DNDEBUG via cc build script
+
+profile:
+- 3000 allocation-inclusive noise-RGBA decodes per implementation
+- perf record -F 999 -g --call-graph fp
+- Rust: 24264 samples, 73012619368 approximate sampled cycles, 0 lost
+- C: 14333 samples, 42508709726 approximate sampled cycles, 0 lost
+- Rust Decoder::next_pixel: 76.12% total samples
+- Rust inline Pixel::hash frame: 13.53% total samples
+- Rust source-line index assignment: 10.85%, including skid onto following xor
+- Rust assembly-bounded hash preparation/arithmetic: 12955422457 period, 17.7441%
+- Rust assembly-bounded three index stores: 2050193247 period, 2.8080%
+- Rust assembly-bounded combined hash/index path: 15005615704 period, 20.5521%
+- C qoi_decode: 99.68% total samples
+- C assembly-bounded hash arithmetic: 11093933859 period, 26.0980%
+- C assembly-bounded four index stores: 4795785225 period, 11.2819%
+- C assembly-bounded combined path: 37.3799%
+
+pixel representation:
+- size_of::<Pixel>(): 4
+- align_of::<Pixel>(): 1
+- dominant Rust RGBA live values: r in al, g in cl, b/a packed in dx
+- Pixel::hash component reloads: none
+- arithmetic width: 32-bit registers despite usize source
+- modulo: one and $0x3f; no div/rem
+- final usize conversion: no instruction
+- index address: base + index*4 + offsets folded into stores
+- index write: two byte stores plus one 16-bit store
+- previous assignment: two byte stores plus one 16-bit store
+- pixel return: separately packed into Result ABI with shifts and ORs
+
+generated-code comparison:
+- Rust hash input/arithmetic instructions: 14
+- Rust index store instructions: 3
+- C hash input/arithmetic instructions: 14
+- C index store instructions: 4
+- Rust already uses packed b/a modulo congruence and is one store shorter than C
+
+candidate disposition:
+- A narrow arithmetic width: rejected; generated code already 32-bit with free widening
+- B wrapping byte arithmetic: not justified; weaker source reasoning, no exposed codegen cost
+- C representation-assisted helper: not justified; values already live, hash fully inlined
+- D local index assignment: rejected; mask/register/scaled address already optimal
+- no production candidate implemented or timed
+
+hash equivalence:
+- maximum weighted sum: 6630
+- algebra: unsigned sum % 64 equals sum & 63; u32 and usize sums are exact
+- required edge values covered: 0,1,2,15,31,63,127,128,254,255
+- edge Cartesian pixels compared: 10000
+- deterministic generated pixels compared: 2000000
+- formulas compared: current Pixel::hash, literal QOI formula, narrow u32/mask candidate
+- known slots: transparent black 0; opaque black 53; [1,2,3,4] 14; white 38
+- explicit collision: [0,0,0,0] and [5,1,0,4], slot 0
+
+index tests:
+- INDEX retrieval after RGB
+- INDEX retrieval after RGBA
+- collision replacement
+- INDEX opcode update into retrieved pixel's hash slot
+- INDEX retrieval after wrapping DIFF
+- INDEX retrieval after wrapping LUMA
+- initial opaque-black slot 53
+- RUN/index interaction
+
+hardware counters (perf stat -r 10, 500 noise-RGBA decodes per process):
+
+implementation  cycles        instructions   branches      branch misses  cache refs   cache misses  process time
+Rust            12213036707   44455684403    5810714893    2091168        177579610    119256665     4.209810 s
+C               7077464590    27664457874    3715562901    2059662        177031322    111402459     2.381604 s
+
+after counters: not applicable; production binary unchanged
+
+baseline per-run medians (C ns / Rust ns / exact paired Rust/C):
+
+fixture       operation  run 1                         run 2                         run 3                         run 4                         run 5
+flat-rgba     encode     1026000 / 3968100 / 3.867544  1123600 / 4318500 / 3.843450  1298700 / 5217400 / 4.017402  1194500 / 4575000 / 3.830054  1085800 / 4055000 / 3.734574
+flat-rgba     decode     1487800 / 3461599 / 2.326656  1596100 / 3686600 / 2.309755  1407500 / 3226400 / 2.292291  1688600 / 3825101 / 2.265250  1845900 / 4318401 / 2.339456
+gradient-rgb  encode     7920299 / 10140599 / 1.280330 7149800 / 9254500 / 1.294372   7694000 / 9891500 / 1.285612   7459600 / 9666401 / 1.295834   9315500 / 11642300 / 1.249777
+gradient-rgb  decode     4281599 / 8794900 / 2.054116  4100100 / 8636201 / 2.106339  4226500 / 8803500 / 2.082929  4196501 / 8774300 / 2.090861  4210300 / 8582500 / 2.038453
+noise-rgba    encode     4671099 / 9930700 / 2.125988  4517500 / 9293400 / 2.057200  4605401 / 9497400 / 2.062231  4344300 / 9081901 / 2.090533  4623300 / 9551400 / 2.065927
+noise-rgba    decode     3951800 / 6427000 / 1.626347  4621401 / 7241200 / 1.566884  4052901 / 6608700 / 1.630610  4217500 / 6871401 / 1.629259  4135001 / 6445403 / 1.558743
+
+five-run medians:
+
+fixture       operation  C median    Rust median  paired Rust/C median
+flat-rgba     encode     1123600     4318500      3.843450
+flat-rgba     decode     1596100     3686600      2.309755
+gradient-rgb  encode     7694000     9891500      1.285612
+gradient-rgb  decode     4210300     8774300      2.082929
+noise-rgba    encode     4605401     9497400      2.065927
+noise-rgba    decode     4135001     6608700      1.626347
+
+run-to-run ranges (minimum-maximum per-run median):
+
+fixture       operation  C range             Rust range          paired ratio range
+flat-rgba     encode     1026000-1298700     3968100-5217400     3.734574-4.017402
+flat-rgba     decode     1407500-1845900     3226400-4318401     2.265250-2.339456
+gradient-rgb  encode     7149800-9315500     9254500-11642300    1.249777-1.295834
+gradient-rgb  decode     4100100-4281599     8582500-8803500     2.038453-2.106339
+noise-rgba    encode     4344300-4671099     9081901-9930700     2.057200-2.125988
+noise-rgba    decode     3951800-4621401     6427000-7241200     1.558743-1.630610
+
+after benchmarks: not applicable; production binary unchanged
+
+correctness:
+- cargo test passed with 55 unit tests plus differential and doc tests
+- ./scripts/verify.sh passed with 55 unit tests, differential test, doc tests,
+  reference integrity checks, and release builds
+- no production src change
+- no unsafe code, dependency, API, encoder, allocation, cursor, opcode, operand,
+  output, RUN, malformed-input, hash, or index behavior change
+
+fuzzing:
+- nightly rust: rustc 1.99.0-nightly (73dc9167f 2026-08-01)
+- nightly cargo: cargo 1.99.0-nightly (7c83d4cc0 2026-07-29)
+- cargo-fuzz: 0.13.2
+- tested base commit: 60341df081620a6154b51a98a6b6248c8cca17fe
+- fuzz worktree: test/documentation changes only; non-test production code identical
+- differential: 1534908 executions, 301 seconds, final corpus 124 inputs / 928 bytes,
+  coverage 210, feature set 863, 0 crashes
+- decode_arbitrary: 1359351 executions, 301 seconds, final corpus 77 inputs / 6867 bytes,
+  coverage 117, feature set 420, 0 crashes
+- raw logs: /tmp/qoi-hash-baseline/fuzz-{differential,decode-arbitrary}.txt
+
+raw baseline output: /tmp/qoi-hash-baseline/run-{1,2,3,4,5}.txt
+raw profiles/counters: /tmp/qoi-hash-baseline/profile/
+checksum in every normal benchmark run: 0000000001a8c354
+
+decision:
+The current hash/index path is already adequately optimized; no production
+change was attempted.
+
+next hotspot:
+profile private Pixel/Result return packing and caller-side unpacking, currently
+13.54% at the next_pixel closing line before assembly/skid isolation
