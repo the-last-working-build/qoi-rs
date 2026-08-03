@@ -1,0 +1,52 @@
+# QOI optimization 001 benchmark results
+
+baseline implementation commit: 111b9a05b00a574a2d9c8235e007882c11767f29
+baseline tree state: clean
+optimized implementation commit: 0ba41ef1364a00385113f5c60e82d07d8c86eab8
+optimized tree state: clean
+branch: perf/first-profiled-optimization
+operating system: Arch Linux under WSL2, Linux 6.18.33.2-microsoft-standard-WSL2
+architecture: x86_64
+cpu: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
+rust compiler: rustc 1.96.0 (ac68faa20 2026-05-25)
+c compiler: cc (GCC) 16.1.1 20260430
+rust optimization: release
+c optimization: -O3 -DNDEBUG via cc build script
+
+benchmark procedure:
+- five independent runs before and five independent runs after
+- 10 warm-up iterations per fixture and operation in each run
+- 100 measured iterations per fixture and operation in each run
+- alternating paired C/Rust order
+- allocation, codec work, constant-time output observation, and deallocation included
+- fixture generation and file I/O excluded from measurement
+- rows below are medians across the five per-run medians
+
+fixture       operation    C before      C after   Rust before    Rust after  improvement  Rust/C before  Rust/C after
+flat-rgba     encode       998300 ns     981297 ns     3910800 ns    3825302 ns        2.19%          3.917x         3.898x
+flat-rgba     decode      1363900 ns    1357300 ns     5642501 ns    3149300 ns       44.19%          4.137x         2.320x
+gradient-rgb  encode      6629800 ns    6813704 ns     8537399 ns    8901006 ns       -4.26%          1.288x         1.306x
+gradient-rgb  decode      3908100 ns    3937000 ns     8053901 ns    8205599 ns       -1.88%          2.061x         2.084x
+noise-rgba    encode      4286802 ns    4366001 ns     8712304 ns    9209102 ns       -5.70%          2.032x         2.109x
+noise-rgba    decode      3777701 ns    3706100 ns     8569903 ns    6265200 ns       26.89%          2.269x         1.691x
+
+run-to-run ranges (minimum-maximum per-run median):
+
+fixture       operation    C before range       C after range        Rust before range    Rust after range
+flat-rgba     encode        977200-1021800 ns     950200-1105800 ns    3863501-4079001 ns    3744100-4430701 ns
+flat-rgba     decode       1290300-1374000 ns    1345201-1489596 ns    5393601-5809803 ns    3099103-3342290 ns
+gradient-rgb  encode       6576300-7442103 ns    6659404-7190879 ns    8439002-9383304 ns    8601506-9146773 ns
+gradient-rgb  decode       3851200-4039402 ns    3868003-4136288 ns    7905000-8076703 ns    7979805-8688974 ns
+noise-rgba    encode       4183900-4447999 ns    4287000-4737700 ns    8465001-9437800 ns    8971402-9821200 ns
+noise-rgba    decode       3611002-3875101 ns    3664601-4689502 ns    8201704-8718699 ns    6236902-7590502 ns
+
+checksum in every run: 0000000001a8c354
+
+raw baseline output: /tmp/qoi-baseline/run-{1,2,3,4,5}.txt
+raw optimized output: /tmp/qoi-after/run-{1,2,3,4,5}.txt
+
+baseline metadata note:
+The raw baseline banner reports c2e0daa / feat/submission because Cargo reused
+a prior benchmark build. Git was verified clean at 111b9a0 before measurement,
+and c2e0daa..111b9a0 has no changes under src or bench. The optimized binary
+was rebuilt from clean commit 0ba41ef and its banner records that commit.
