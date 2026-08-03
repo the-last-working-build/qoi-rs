@@ -42,24 +42,46 @@ pub fn decode(
 
     let chunks = &input[HEADER_SIZE..marker_start];
     let mut decoder = Decoder::new(chunks);
+    let mut remaining = expected_pixels;
 
     match output_channels {
         Channels::Rgb => {
-            for _ in 0..expected_pixels {
-                let pixel = decoder.next_pixel()?;
-                pixels.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
+            while remaining > 0 {
+                let span = decoder.next_span()?;
+                let count = usize::from(span.count);
+
+                if count > remaining {
+                    return Err(DecodeError::TooManyPixels);
+                }
+
+                for _ in 0..span.count {
+                    pixels.extend_from_slice(&[span.pixel.r, span.pixel.g, span.pixel.b]);
+                }
+
+                remaining -= count;
             }
         }
         Channels::Rgba => {
-            for _ in 0..expected_pixels {
-                let pixel = decoder.next_pixel()?;
-                pixels.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
+            while remaining > 0 {
+                let span = decoder.next_span()?;
+                let count = usize::from(span.count);
+
+                if count > remaining {
+                    return Err(DecodeError::TooManyPixels);
+                }
+
+                for _ in 0..span.count {
+                    pixels.extend_from_slice(&[
+                        span.pixel.r,
+                        span.pixel.g,
+                        span.pixel.b,
+                        span.pixel.a,
+                    ]);
+                }
+
+                remaining -= count;
             }
         }
-    }
-
-    if decoder.run_remaining != 0 {
-        return Err(DecodeError::TooManyPixels);
     }
 
     if decoder.cursor != chunks.len() {
@@ -78,7 +100,11 @@ struct Decoder<'a> {
     cursor: usize,
     previous: Pixel,
     index: [Pixel; 64],
-    run_remaining: u8,
+}
+
+struct PixelSpan {
+    pixel: Pixel,
+    count: u8,
 }
 
 impl<'a> Decoder<'a> {
@@ -88,45 +114,51 @@ impl<'a> Decoder<'a> {
             cursor: 0,
             previous: Pixel::INITIAL,
             index: [Pixel::default(); 64],
-            run_remaining: 0,
         }
     }
 
-    fn next_pixel(&mut self) -> Result<Pixel, DecodeError> {
-        if self.run_remaining > 0 {
-            self.run_remaining -= 1;
-            return Ok(self.previous);
-        }
-
+    fn next_span(&mut self) -> Result<PixelSpan, DecodeError> {
         let byte = self.read_byte()?;
 
-        let pixel = match byte {
+        let span = match byte {
             OP_RGB => {
                 let [r, g, b] = self.read_operands()?;
 
-                Pixel {
-                    r,
-                    g,
-                    b,
-                    a: self.previous.a,
+                PixelSpan {
+                    pixel: Pixel {
+                        r,
+                        g,
+                        b,
+                        a: self.previous.a,
+                    },
+                    count: 1,
                 }
             }
             OP_RGBA => {
                 let [r, g, b, a] = self.read_operands()?;
 
-                Pixel { r, g, b, a }
+                PixelSpan {
+                    pixel: Pixel { r, g, b, a },
+                    count: 1,
+                }
             }
-            OP_INDEX..=OP_INDEX_MAX => self.index[usize::from(byte & MASK_DATA)],
+            OP_INDEX..=OP_INDEX_MAX => PixelSpan {
+                pixel: self.index[usize::from(byte & MASK_DATA)],
+                count: 1,
+            },
             OP_DIFF..=OP_DIFF_MAX => {
                 let dr = ((byte >> 4) & 0x03) as i8 - 2;
                 let dg = ((byte >> 2) & 0x03) as i8 - 2;
                 let db = (byte & 0x03) as i8 - 2;
 
-                Pixel {
-                    r: self.previous.r.wrapping_add_signed(dr),
-                    g: self.previous.g.wrapping_add_signed(dg),
-                    b: self.previous.b.wrapping_add_signed(db),
-                    a: self.previous.a,
+                PixelSpan {
+                    pixel: Pixel {
+                        r: self.previous.r.wrapping_add_signed(dr),
+                        g: self.previous.g.wrapping_add_signed(dg),
+                        b: self.previous.b.wrapping_add_signed(db),
+                        a: self.previous.a,
+                    },
+                    count: 1,
                 }
             }
             OP_LUMA..=OP_LUMA_MAX => {
@@ -136,23 +168,26 @@ impl<'a> Decoder<'a> {
                 let dr_dg = ((second >> 4) & 0x0f) as i8 - 8;
                 let db_dg = (second & 0x0f) as i8 - 8;
 
-                Pixel {
-                    r: self.previous.r.wrapping_add_signed(dg + dr_dg),
-                    g: self.previous.g.wrapping_add_signed(dg),
-                    b: self.previous.b.wrapping_add_signed(dg + db_dg),
-                    a: self.previous.a,
+                PixelSpan {
+                    pixel: Pixel {
+                        r: self.previous.r.wrapping_add_signed(dg + dr_dg),
+                        g: self.previous.g.wrapping_add_signed(dg),
+                        b: self.previous.b.wrapping_add_signed(dg + db_dg),
+                        a: self.previous.a,
+                    },
+                    count: 1,
                 }
             }
-            OP_RUN..=OP_RUN_MAX => {
-                self.run_remaining = byte & MASK_DATA;
-                self.previous
-            }
+            OP_RUN..=OP_RUN_MAX => PixelSpan {
+                pixel: self.previous,
+                count: (byte & MASK_DATA) + 1,
+            },
         };
 
-        self.previous = pixel;
-        self.index[pixel.hash()] = pixel;
+        self.previous = span.pixel;
+        self.index[span.pixel.hash()] = span.pixel;
 
-        Ok(pixel)
+        Ok(span)
     }
 
     fn read_byte(&mut self) -> Result<u8, DecodeError> {
