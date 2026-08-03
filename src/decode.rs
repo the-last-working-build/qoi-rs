@@ -42,46 +42,24 @@ pub fn decode(
 
     let chunks = &input[HEADER_SIZE..marker_start];
     let mut decoder = Decoder::new(chunks);
-    let mut remaining = expected_pixels;
 
     match output_channels {
         Channels::Rgb => {
-            while remaining > 0 {
-                let span = decoder.next_span()?;
-                let count = usize::from(span.count);
-
-                if count > remaining {
-                    return Err(DecodeError::TooManyPixels);
-                }
-
-                for _ in 0..span.count {
-                    pixels.extend_from_slice(&[span.pixel.r, span.pixel.g, span.pixel.b]);
-                }
-
-                remaining -= count;
+            for _ in 0..expected_pixels {
+                let pixel = decoder.next_pixel()?;
+                pixels.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
             }
         }
         Channels::Rgba => {
-            while remaining > 0 {
-                let span = decoder.next_span()?;
-                let count = usize::from(span.count);
-
-                if count > remaining {
-                    return Err(DecodeError::TooManyPixels);
-                }
-
-                for _ in 0..span.count {
-                    pixels.extend_from_slice(&[
-                        span.pixel.r,
-                        span.pixel.g,
-                        span.pixel.b,
-                        span.pixel.a,
-                    ]);
-                }
-
-                remaining -= count;
+            for _ in 0..expected_pixels {
+                let pixel = decoder.next_pixel()?;
+                pixels.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
             }
         }
+    }
+
+    if decoder.run_remaining != 0 {
+        return Err(DecodeError::TooManyPixels);
     }
 
     if decoder.cursor != chunks.len() {
@@ -100,11 +78,7 @@ struct Decoder<'a> {
     cursor: usize,
     previous: Pixel,
     index: [Pixel; 64],
-}
-
-struct PixelSpan {
-    pixel: Pixel,
-    count: u8,
+    run_remaining: u8,
 }
 
 impl<'a> Decoder<'a> {
@@ -114,51 +88,45 @@ impl<'a> Decoder<'a> {
             cursor: 0,
             previous: Pixel::INITIAL,
             index: [Pixel::default(); 64],
+            run_remaining: 0,
         }
     }
 
-    fn next_span(&mut self) -> Result<PixelSpan, DecodeError> {
+    fn next_pixel(&mut self) -> Result<Pixel, DecodeError> {
+        if self.run_remaining > 0 {
+            self.run_remaining -= 1;
+            return Ok(self.previous);
+        }
+
         let byte = self.read_byte()?;
 
-        let span = match byte {
+        let pixel = match byte {
             OP_RGB => {
                 let [r, g, b] = self.read_operands()?;
 
-                PixelSpan {
-                    pixel: Pixel {
-                        r,
-                        g,
-                        b,
-                        a: self.previous.a,
-                    },
-                    count: 1,
+                Pixel {
+                    r,
+                    g,
+                    b,
+                    a: self.previous.a,
                 }
             }
             OP_RGBA => {
                 let [r, g, b, a] = self.read_operands()?;
 
-                PixelSpan {
-                    pixel: Pixel { r, g, b, a },
-                    count: 1,
-                }
+                Pixel { r, g, b, a }
             }
-            OP_INDEX..=OP_INDEX_MAX => PixelSpan {
-                pixel: self.index[usize::from(byte & MASK_DATA)],
-                count: 1,
-            },
+            OP_INDEX..=OP_INDEX_MAX => self.index[usize::from(byte & MASK_DATA)],
             OP_DIFF..=OP_DIFF_MAX => {
                 let dr = ((byte >> 4) & 0x03) as i8 - 2;
                 let dg = ((byte >> 2) & 0x03) as i8 - 2;
                 let db = (byte & 0x03) as i8 - 2;
 
-                PixelSpan {
-                    pixel: Pixel {
-                        r: self.previous.r.wrapping_add_signed(dr),
-                        g: self.previous.g.wrapping_add_signed(dg),
-                        b: self.previous.b.wrapping_add_signed(db),
-                        a: self.previous.a,
-                    },
-                    count: 1,
+                Pixel {
+                    r: self.previous.r.wrapping_add_signed(dr),
+                    g: self.previous.g.wrapping_add_signed(dg),
+                    b: self.previous.b.wrapping_add_signed(db),
+                    a: self.previous.a,
                 }
             }
             OP_LUMA..=OP_LUMA_MAX => {
@@ -168,26 +136,23 @@ impl<'a> Decoder<'a> {
                 let dr_dg = ((second >> 4) & 0x0f) as i8 - 8;
                 let db_dg = (second & 0x0f) as i8 - 8;
 
-                PixelSpan {
-                    pixel: Pixel {
-                        r: self.previous.r.wrapping_add_signed(dg + dr_dg),
-                        g: self.previous.g.wrapping_add_signed(dg),
-                        b: self.previous.b.wrapping_add_signed(dg + db_dg),
-                        a: self.previous.a,
-                    },
-                    count: 1,
+                Pixel {
+                    r: self.previous.r.wrapping_add_signed(dg + dr_dg),
+                    g: self.previous.g.wrapping_add_signed(dg),
+                    b: self.previous.b.wrapping_add_signed(dg + db_dg),
+                    a: self.previous.a,
                 }
             }
-            OP_RUN..=OP_RUN_MAX => PixelSpan {
-                pixel: self.previous,
-                count: (byte & MASK_DATA) + 1,
-            },
+            OP_RUN..=OP_RUN_MAX => {
+                self.run_remaining = byte & MASK_DATA;
+                self.previous
+            }
         };
 
-        self.previous = span.pixel;
-        self.index[span.pixel.hash()] = span.pixel;
+        self.previous = pixel;
+        self.index[pixel.hash()] = pixel;
 
-        Ok(span)
+        Ok(pixel)
     }
 
     fn read_byte(&mut self) -> Result<u8, DecodeError> {
@@ -438,83 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn decodes_run_followed_by_another_opcode() {
-        let diff = OP_DIFF | (3 << 4) | (2 << 2) | 1;
-        let input = file(4, 1, Channels::Rgb, &[OP_RGB, 10, 20, 30, OP_RUN | 1, diff]);
-
-        let image = decode(&input, None).expect("decode should succeed");
-
-        assert_eq!(
-            image.pixels,
-            vec![10, 20, 30, 10, 20, 30, 10, 20, 30, 11, 20, 29]
-        );
-    }
-
-    #[test]
-    fn decodes_multiple_adjacent_run_chunks() {
-        let input = file(
-            6,
-            1,
-            Channels::Rgb,
-            &[OP_RGB, 1, 2, 3, OP_RUN | 1, OP_RUN | 2],
-        );
-
-        let image = decode(&input, None).expect("decode should succeed");
-
-        assert_eq!(image.pixels, [1, 2, 3].repeat(6));
-    }
-
-    #[test]
-    fn decodes_run_to_requested_rgb() {
-        let input = file(3, 1, Channels::Rgba, &[OP_RGBA, 1, 2, 3, 4, OP_RUN | 1]);
-
-        let image = decode(&input, Some(Channels::Rgb)).expect("decode should succeed");
-
-        assert_eq!(image.pixels, [1, 2, 3].repeat(3));
-        assert_eq!(image.output_channels, Channels::Rgb);
-    }
-
-    #[test]
-    fn decodes_run_to_requested_rgba() {
-        let input = file(3, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_RUN | 1]);
-
-        let image = decode(&input, Some(Channels::Rgba)).expect("decode should succeed");
-
-        assert_eq!(image.pixels, [1, 2, 3, 255].repeat(3));
-        assert_eq!(image.output_channels, Channels::Rgba);
-    }
-
-    #[test]
-    fn emitting_run_span_does_not_advance_decoder_cursor() {
-        let chunks = [OP_RGB, 10, 20, 30, OP_RUN | 2, OP_RGB, 1, 2, 3];
-        let mut decoder = Decoder::new(&chunks);
-
-        let first = decoder.next_span().expect("RGB span should decode");
-        assert_eq!(first.count, 1);
-        assert_eq!(decoder.cursor, 4);
-
-        let run = decoder.next_span().expect("RUN span should decode");
-        assert_eq!(run.count, 3);
-        assert_eq!(run.pixel, first.pixel);
-
-        let cursor_after_run_chunk = decoder.cursor;
-        let mut output = Vec::new();
-        for _ in 0..run.count {
-            output.extend_from_slice(&[run.pixel.r, run.pixel.g, run.pixel.b]);
-            assert_eq!(decoder.cursor, cursor_after_run_chunk);
-        }
-
-        assert_eq!(output, [10, 20, 30].repeat(3));
-        let following = decoder
-            .next_span()
-            .expect("following RGB span should decode");
-        assert_eq!(following.pixel.r, 1);
-        assert_eq!(following.pixel.g, 2);
-        assert_eq!(following.pixel.b, 3);
-        assert_eq!(decoder.cursor, chunks.len());
-    }
-
-    #[test]
     fn decodes_run_of_initial_opaque_black_pixel() {
         let input = file(1, 1, Channels::Rgba, &[OP_RUN]);
 
@@ -544,13 +432,6 @@ mod tests {
     #[test]
     fn rejects_unused_chunk_data() {
         let input = file(1, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_INDEX]);
-
-        assert_eq!(decode(&input, None), Err(DecodeError::TrailingData));
-    }
-
-    #[test]
-    fn rejects_unused_chunk_data_after_run_span() {
-        let input = file(2, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_RUN, OP_DIFF]);
 
         assert_eq!(decode(&input, None), Err(DecodeError::TrailingData));
     }

@@ -145,3 +145,17 @@ pixel span and use straightforward repeated fixed-width appends. Opcode
 dispatch, operand reads, allocation, output-buffer preinitialization, bulk
 slice filling, stack buffers, encoder code, and the public API remain out of
 scope.
+
+## Experimental outcome
+
+The experiment confirmed the mechanism on flat RGBA but failed the control
+criteria. Flat Rust instructions fell 74.23%, branches 68.30%, and benchmark
+time 73.22%. Gradient RGB decode regressed 16.59%, noise RGBA decode regressed
+14.83%, and their paired Rust/C ratio ranges did not overlap the baseline.
+Noise instructions increased 5.71% and branches 24.88%, consistent with paying
+the new remaining-count check and inner count loop for count-one spans.
+
+The production and test changes were therefore reverted. Full results and the
+compatibility/fuzzing record are in
+`bench/optimizations/002-batch-run-decoding.md` and
+`bench/results/optimization-002.txt`.
