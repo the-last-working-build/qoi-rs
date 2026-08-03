@@ -1,0 +1,78 @@
+# QOI optimization 002 benchmark results — rejected experiment
+
+baseline implementation commit: dadc968941fe37ef3cdee490b568caf19e5a4c51
+baseline tree state: clean
+experimental implementation commit: 286eafdcdec612c7ae91c4ee082a19a9db189386
+experimental tree state: clean
+branch: perf/batch-run-decode
+decision: reverted; final production code equals baseline
+operating system: Arch Linux under WSL2, Linux 6.18.33.2-microsoft-standard-WSL2
+architecture: x86_64
+cpu: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
+rust compiler: rustc 1.96.0 (ac68faa20 2026-05-25)
+c compiler: cc (GCC) 16.1.1 20260430
+rust optimization: release
+c optimization: -O3 -DNDEBUG via cc build script
+
+benchmark procedure:
+- five independent runs before and five independent runs after
+- 10 warm-up iterations per fixture and operation in each run
+- 100 measured iterations per fixture and operation in each run
+- alternating paired C/Rust order
+- allocation, codec work, constant-time output observation, and deallocation included
+- fixture generation and file I/O excluded from measurement
+- rows below are medians across the five per-run medians
+- paired Rust/C is the median of five within-run ratios
+
+fixture       operation     C before       C experiment   C change   Rust before    Rust experiment  Rust change  paired Rust/C before  paired Rust/C experiment  decision
+flat-rgba     encode         923000 ns       1042400 ns    +12.94%      3628600 ns        3933700 ns       +8.41%          3.89x                 3.83x             control drift; encoder unchanged
+flat-rgba     decode        1348100 ns       1342400 ns     -0.42%      3132000 ns         838799 ns      -73.22%          2.32x                 0.64x             intended RUN benefit
+gradient-rgb  encode        6410701 ns       6939200 ns     +8.24%      8451402 ns        9032600 ns       +6.88%          1.31x                 1.30x             control drift; encoder unchanged
+gradient-rgb  decode        3799101 ns       4053200 ns     +6.69%      7925701 ns        9240500 ns      +16.59%          2.08x                 2.28x             repeatable material regression
+noise-rgba    encode        4094701 ns       4309200 ns     +5.24%      8571202 ns        9155502 ns       +6.82%          2.09x                 2.10x             control drift; encoder unchanged
+noise-rgba    decode        3617700 ns       3855600 ns     +6.58%      6117601 ns        7024801 ns      +14.83%          1.69x                 1.82x             repeatable material regression
+
+run-to-run ranges (minimum-maximum per-run median):
+
+fixture       operation     C baseline range      C experiment range    Rust baseline range   Rust experiment range   paired ratio before   paired ratio experiment
+flat-rgba     encode          896600-974801 ns       946400-1144500 ns    3542201-3697201 ns     3745400-4207599 ns       3.77-3.95x             3.68-3.96x
+flat-rgba     decode        1273000-1443000 ns     1290100-1604300 ns    2927801-3276800 ns      828100-1027501 ns        2.27-2.33x             0.62-0.65x
+gradient-rgb  encode        6365300-6708801 ns     6785400-7099201 ns    8315100-8617702 ns     8824100-9340801 ns       1.28-1.32x             1.29-1.32x
+gradient-rgb  decode        3758401-4061100 ns     3981601-4074500 ns    7686602-8448901 ns     9072301-9649100 ns       2.05-2.09x             2.27-2.38x
+noise-rgba    encode        4062600-4156100 ns     4285501-4506300 ns    8505502-8705201 ns     9014901-9319400 ns       2.07-2.10x             2.06-2.12x
+noise-rgba    decode        3590701-3735300 ns     3771500-4393000 ns    6091701-6289301 ns     6892001-7992300 ns       1.68-1.70x             1.81-1.83x
+
+hardware counters (mean of 10 repetitions, 500 decodes each):
+
+implementation/workload       cycles before/after      instructions before/after    branches before/after      branch misses before/after  runtime before/after
+Rust flat RGBA               5.739B / 1.653B (-71.19%)  21.505B / 5.541B (-74.23%)  3.746B / 1.188B (-68.30%)  8.491M / 0.016M (-99.82%)  1.691s / 0.489s (-71.08%)
+C flat RGBA                  2.445B / 2.462B (+0.67%)    5.717B / 5.685B (-0.56%)   1.142B / 1.137B (-0.45%)  0.036M / 0.021M            0.652s / 0.716s
+Rust noise RGBA             12.257B / 12.808B (+4.49%)  46.026B / 48.654B (+5.71%)  6.334B / 7.910B (+24.88%)  2.072M / 2.067M (-0.24%)   3.757s / 3.892s (+3.60%)
+C noise RGBA                 7.105B / 6.922B (-2.57%)   27.668B / 27.673B (+0.02%)  3.717B / 3.720B (+0.08%)   2.055M / 2.051M            2.262s / 2.120s
+
+sampling profiles (3,000 decodes, no lost samples):
+- Rust flat before: 10,354 samples; Decoder::next_pixel 51.46%
+- Rust flat experiment: 2,847 samples; Decoder::next_span 15.54%
+- Rust noise before: 22,447 samples; Decoder::next_pixel 80.74%
+- Rust noise experiment: 24,383 samples; Decoder::next_span 72.04%
+- C flat before/experiment: 4,028 / 4,101 samples; qoi_decode 99.66% / 99.71%
+- C noise before/experiment: 12,176 / 13,376 samples; qoi_decode 99.69% / 99.68%
+
+fuzzing on experimental commit 286eafdcdec612c7ae91c4ee082a19a9db189386:
+- toolchain: rustc 1.99.0-nightly (73dc9167f 2026-08-01), cargo 1.99.0-nightly (7c83d4cc0 2026-07-29), cargo-fuzz 0.13.2
+- differential: 1,660,507 executions, 301 seconds, final active corpus 125 inputs/968 bytes, 206 coverage, 839 features, 0 crashes
+- decode_arbitrary: 1,424,831 executions, 301 seconds, final active corpus 86 inputs/9,895 bytes, 114 coverage, 391 features, 0 crashes
+
+checksum in every benchmark run: 0000000001a8c354
+
+raw baseline output: /tmp/qoi-run-baseline/run-{1,2,3,4,5}.txt
+raw experimental output: /tmp/qoi-run-after/run-{1,2,3,4,5}.txt
+raw profiles/counters: /tmp/{rust,c}-{flat,noise}-run{,-after}{,-stat}.txt
+raw fuzz logs: /tmp/qoi-run-fuzz-{differential,decode-arbitrary}.txt
+
+measurement notes:
+- Baseline benchmark files contain the stale optimization-001 compile-time banner (0ba41ef / perf/first-profiled-optimization); Git verified the source checkout clean at dadc968.
+- Experimental benchmark files correctly record 286eafd / perf/batch-run-decode / clean.
+- C and encoder movements are controls for machine drift, not production changes.
+- Cache-miss counters were noisy and were not used for the decision.
+- The experiment was reverted because gradient and noise decode regressions were repeatable, their ranges did not overlap baseline, and noise instructions/branches increased consistently with the extra count-one span loop.
