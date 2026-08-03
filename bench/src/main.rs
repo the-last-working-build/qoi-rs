@@ -41,9 +41,25 @@ fn main() {
 
     match args.next().as_deref() {
         None => run_benchmark(),
+        Some("inspect") => run_inspect(&program, args),
         Some("profile") => run_profile(&program, args),
-        Some(_) => profile_usage(&program),
+        Some(_) => usage(&program),
     }
+}
+
+fn run_inspect(program: &str, mut args: impl Iterator<Item = String>) {
+    let fixture_name = args.next().unwrap_or_else(|| usage(program));
+
+    if args.next().is_some() {
+        usage(program);
+    }
+
+    let fixture = Fixture::named(&fixture_name).unwrap_or_else(|| usage(program));
+    let encoded = c_encode(&fixture.pixels, fixture.desc).expect("C encode should succeed");
+    let distribution = ChunkDistribution::parse(&encoded).expect("C output should be valid QOI");
+
+    assert_eq!(distribution.emitted_pixels, pixel_count());
+    distribution.print(&fixture_name);
 }
 
 fn run_benchmark() {
@@ -231,11 +247,119 @@ fn run_profile(program: &str, mut args: impl Iterator<Item = String>) {
 }
 
 fn profile_usage(program: &str) -> ! {
+    usage(program)
+}
+
+fn usage(program: &str) -> ! {
     eprintln!(
-        "usage: {program} profile <rust|c> <encode|decode> \
+        "usage:\n  {program} inspect <flat-rgba|gradient-rgb|noise-rgba>\n  \
+         {program} profile <rust|c> <encode|decode> \
          <flat-rgba|gradient-rgb|noise-rgba> <iterations>"
     );
     std::process::exit(2);
+}
+
+#[derive(Default)]
+struct ChunkDistribution {
+    rgb: usize,
+    rgba: usize,
+    index: usize,
+    diff: usize,
+    luma: usize,
+    run: usize,
+    emitted_pixels: usize,
+    encoded_chunk_bytes: usize,
+}
+
+impl ChunkDistribution {
+    fn parse(encoded: &[u8]) -> Result<Self, &'static str> {
+        const HEADER_SIZE: usize = 14;
+        const END_MARKER_SIZE: usize = 8;
+        const OP_RGB: u8 = 0xfe;
+        const OP_RGBA: u8 = 0xff;
+        const MASK_2: u8 = 0xc0;
+        const OP_INDEX: u8 = 0x00;
+        const OP_DIFF: u8 = 0x40;
+        const OP_LUMA: u8 = 0x80;
+        const OP_RUN: u8 = 0xc0;
+
+        let chunk_end = encoded
+            .len()
+            .checked_sub(END_MARKER_SIZE)
+            .filter(|end| *end >= HEADER_SIZE)
+            .ok_or("encoded input is too short")?;
+        let chunks = &encoded[HEADER_SIZE..chunk_end];
+        let mut distribution = Self {
+            encoded_chunk_bytes: chunks.len(),
+            ..Self::default()
+        };
+        let mut cursor = 0usize;
+
+        while cursor < chunks.len() {
+            let opcode = chunks[cursor];
+            let (chunk_len, emitted_pixels) = match opcode {
+                OP_RGB => {
+                    distribution.rgb += 1;
+                    (4, 1)
+                }
+                OP_RGBA => {
+                    distribution.rgba += 1;
+                    (5, 1)
+                }
+                byte if byte & MASK_2 == OP_INDEX => {
+                    distribution.index += 1;
+                    (1, 1)
+                }
+                byte if byte & MASK_2 == OP_DIFF => {
+                    distribution.diff += 1;
+                    (1, 1)
+                }
+                byte if byte & MASK_2 == OP_LUMA => {
+                    distribution.luma += 1;
+                    (2, 1)
+                }
+                byte if byte & MASK_2 == OP_RUN => {
+                    distribution.run += 1;
+                    (1, usize::from(byte & 0x3f) + 1)
+                }
+                _ => unreachable!("all byte values are classified"),
+            };
+
+            cursor = cursor
+                .checked_add(chunk_len)
+                .filter(|end| *end <= chunks.len())
+                .ok_or("truncated encoded chunk")?;
+            distribution.emitted_pixels = distribution
+                .emitted_pixels
+                .checked_add(emitted_pixels)
+                .ok_or("emitted pixel count overflow")?;
+        }
+
+        Ok(distribution)
+    }
+
+    fn print(&self, fixture_name: &str) {
+        let total_chunks = self.rgb + self.rgba + self.index + self.diff + self.luma + self.run;
+        let chunk_share = percentage(self.rgba, total_chunks);
+        let pixel_share = percentage(self.rgba, self.emitted_pixels);
+
+        println!("fixture: {fixture_name}");
+        println!("RGB chunks: {}", self.rgb);
+        println!("RGBA chunks: {}", self.rgba);
+        println!("INDEX chunks: {}", self.index);
+        println!("DIFF chunks: {}", self.diff);
+        println!("LUMA chunks: {}", self.luma);
+        println!("RUN chunks: {}", self.run);
+        println!("total chunks: {total_chunks}");
+        println!("total emitted pixels: {}", self.emitted_pixels);
+        println!("total encoded chunk bytes: {}", self.encoded_chunk_bytes);
+        println!("RGBA share of chunks: {chunk_share:.4}%");
+        println!("RGBA share of emitted pixels: {pixel_share:.4}%");
+    }
+}
+
+fn percentage(part: usize, total: usize) -> f64 {
+    part as f64 / total as f64 * 100.0
 }
 
 struct Fixture {
