@@ -101,20 +101,21 @@ Medians across five runs:
 
 ## Result
 
-| Fixture | Operation | Rust change | Rust/C change |
+| Fixture | Operation | Interpretation | Observed Rust/C change |
 | --- | --- | ---: | ---: |
-| Flat RGBA | Encode | 2.19% faster | 3.917x to 3.898x |
+| Flat RGBA | Encode | Control drift; encoder unchanged | 3.917x to 3.898x |
 | Flat RGBA | Decode | **44.19% faster** | **4.137x to 2.320x** |
-| Gradient RGB | Encode | 4.26% slower | 1.288x to 1.306x |
+| Gradient RGB | Encode | Control drift; encoder unchanged | 1.288x to 1.306x |
 | Gradient RGB | Decode | 1.88% slower | 2.061x to 2.084x |
-| Noise RGBA | Encode | 5.70% slower | 2.032x to 2.109x |
+| Noise RGBA | Encode | Control drift; encoder unchanged | 2.032x to 2.109x |
 | Noise RGBA | Decode | **26.89% faster** | **2.269x to 1.691x** |
 
 The intended RGBA decode workloads improve well beyond the 5% keep threshold.
 Gradient RGB decode is 1.88% slower in absolute Rust time and 1.12% worse by
 the paired ratio. Its before and after run ranges overlap, so this is treated as
-noise or a small possible regression rather than hidden. Encoder code did not
-change; its absolute shifts track same-direction C shifts and broad run ranges.
+noise or a small possible regression rather than hidden. Encoder rows are
+controls: their raw movements are retained as machine drift, not attributed to
+the decoder optimization.
 
 Rust run-to-run ranges (minimum to maximum median) were:
 

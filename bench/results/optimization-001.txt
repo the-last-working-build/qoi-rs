@@ -22,13 +22,13 @@ benchmark procedure:
 - fixture generation and file I/O excluded from measurement
 - rows below are medians across the five per-run medians
 
-fixture       operation    C before      C after   Rust before    Rust after  improvement  Rust/C before  Rust/C after
-flat-rgba     encode       998300 ns     981297 ns     3910800 ns    3825302 ns        2.19%          3.917x         3.898x
-flat-rgba     decode      1363900 ns    1357300 ns     5642501 ns    3149300 ns       44.19%          4.137x         2.320x
-gradient-rgb  encode      6629800 ns    6813704 ns     8537399 ns    8901006 ns       -4.26%          1.288x         1.306x
-gradient-rgb  decode      3908100 ns    3937000 ns     8053901 ns    8205599 ns       -1.88%          2.061x         2.084x
-noise-rgba    encode      4286802 ns    4366001 ns     8712304 ns    9209102 ns       -5.70%          2.032x         2.109x
-noise-rgba    decode      3777701 ns    3706100 ns     8569903 ns    6265200 ns       26.89%          2.269x         1.691x
+fixture       operation    C before      C after   Rust before    Rust after  Rust/C before  Rust/C after  interpretation
+flat-rgba     encode       998300 ns     981297 ns     3910800 ns    3825302 ns          3.917x         3.898x  control drift; encoder unchanged
+flat-rgba     decode      1363900 ns    1357300 ns     5642501 ns    3149300 ns          4.137x         2.320x  44.19% faster
+gradient-rgb  encode      6629800 ns    6813704 ns     8537399 ns    8901006 ns          1.288x         1.306x  control drift; encoder unchanged
+gradient-rgb  decode      3908100 ns    3937000 ns     8053901 ns    8205599 ns          2.061x         2.084x  1.88% slower
+noise-rgba    encode      4286802 ns    4366001 ns     8712304 ns    9209102 ns          2.032x         2.109x  control drift; encoder unchanged
+noise-rgba    decode      3777701 ns    3706100 ns     8569903 ns    6265200 ns          2.269x         1.691x  26.89% faster
 
 run-to-run ranges (minimum-maximum per-run median):
 
