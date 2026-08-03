@@ -298,6 +298,57 @@ mod tests {
     }
 
     #[test]
+    fn rejects_rgba_chunk_missing_all_operands() {
+        let input = file(1, 1, Channels::Rgba, &[OP_RGBA]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TruncatedChunk));
+    }
+
+    #[test]
+    fn rejects_rgba_chunk_with_one_operand() {
+        let input = file(1, 1, Channels::Rgba, &[OP_RGBA, 1]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TruncatedChunk));
+    }
+
+    #[test]
+    fn rejects_rgba_chunk_with_two_operands() {
+        let input = file(1, 1, Channels::Rgba, &[OP_RGBA, 1, 2]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TruncatedChunk));
+    }
+
+    #[test]
+    fn rgba_chunk_leaves_cursor_at_following_opcode() {
+        let input = file(
+            2,
+            1,
+            Channels::Rgba,
+            &[OP_RGBA, 1, 2, 3, 4, OP_RGBA, 5, 6, 7, 8],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn rgba_operands_ending_at_chunk_boundary_succeed() {
+        let input = file(2, 1, Channels::Rgba, &[OP_RUN, OP_RGBA, 1, 2, 3, 4]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![0, 0, 0, 255, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn rgba_completing_image_rejects_unused_chunk_data() {
+        let input = file(1, 1, Channels::Rgba, &[OP_RGBA, 1, 2, 3, 4, OP_INDEX]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TrailingData));
+    }
+
+    #[test]
     fn rejects_incorrect_end_marker() {
         let mut input = file(1, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3]);
         *input.last_mut().expect("end marker byte") = 0;
