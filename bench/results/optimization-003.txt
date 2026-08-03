@@ -1,0 +1,121 @@
+# QOI optimization 003 benchmark and validation results
+
+decision: retained
+baseline implementation commit: 395fbf8ac00fad46046e29d5188f295914543d40
+baseline tree state: clean
+optimized benchmark/profile/fuzz commit: 263f524ea32cb4c18bba08fbbe19920ad63421d7
+optimized tree state: clean
+final focused-test commit: 47686c0f3ef917a334fecf3a612ab89fc875a7b5
+final-test difference from measured code: one additional test; production src is identical
+branch: perf/rgba-operand-loading
+operating system: Arch Linux under WSL2, Linux 6.18.33.2-microsoft-standard-WSL2
+architecture: x86_64
+cpu: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
+rust compiler: rustc 1.96.0 (ac68faa20 2026-05-25)
+c compiler: cc (GCC) 16.1.1 20260430
+rust optimization: release
+c optimization: -O3 -DNDEBUG via cc build script
+
+benchmark procedure:
+- five independent runs before and five independent runs after
+- clean benchmark rebuild before the baseline and profile phases
+- 10 warm-up iterations per fixture and operation in each run
+- 100 measured iterations per fixture and operation in each run
+- alternating paired C/Rust order
+- allocation, codec work, constant-time output observation, and deallocation included
+- fixture generation and file I/O excluded from measurement
+- five-run statistics are medians across the five per-run medians
+- paired Rust/C is the median of the five per-run Rust/C ratios
+- every raw output banner records the commit above and a clean tree
+
+opcode distribution from C-produced stream:
+
+fixture       RGB       RGBA       INDEX  DIFF     LUMA       RUN    total chunks  emitted pixels  chunk bytes  RGBA share
+noise-rgba    3997      1044574    0      0        5          0      1048576       1048576         5238868      99.6183%
+flat-rgba     1         0          0      0        0          16913  16914         1048576         16917        0.0000%
+gradient-rgb  0         0          0      0        1048575    1      1048576       1048576         2097151      0.0000%
+
+baseline per-run medians (C ns / Rust ns / paired Rust/C):
+
+fixture       operation  run 1                         run 2                         run 3                         run 4                         run 5
+flat-rgba     encode     1127100 / 4190400 / 3.717860  1051400 / 4056700 / 3.858379  1033300 / 3951200 / 3.823865  1059500 / 4032200 / 3.805757  1024000 / 3952100 / 3.859473
+flat-rgba     decode     1536000 / 3496800 / 2.276562  1439000 / 3320000 / 2.307158  1540100 / 3541800 / 2.299721  1422300 / 3274000 / 2.301905  1457600 / 3323500 / 2.280118
+gradient-rgb  encode     8960699 / 11574599 / 1.291707 6877100 / 9027200 / 1.312646   6990600 / 9071600 / 1.297685   6948200 / 9099500 / 1.309620   7122100 / 9257900 / 1.299883
+gradient-rgb  decode     4217800 / 8811100 / 2.089027  4127200 / 8483900 / 2.055607  4167500 / 8590600 / 2.061332  4167000 / 8645300 / 2.074706  4232000 / 8677600 / 2.050473
+noise-rgba    encode     4786500 / 9969900 / 2.082921  4892800 / 10137500 / 2.071922 4487000 / 9325300 / 2.078293  4547300 / 9330000 / 2.051767  4440300 / 9245601 / 2.082202
+noise-rgba    decode     4047700 / 6843800 / 1.690787  4007700 / 6765000 / 1.688001  3931700 / 6727700 / 1.711143  3964900 / 6700600 / 1.689980  3946300 / 6692900 / 1.695994
+
+optimized per-run medians (C ns / Rust ns / paired Rust/C):
+
+fixture       operation  run 1                         run 2                         run 3                         run 4                         run 5
+flat-rgba     encode     1210000 / 4342500 / 3.588843  1007100 / 4090600 / 4.061761  1042800 / 4026900 / 3.861623  996900 / 3880800 / 3.892868   1067800 / 4186500 / 3.920678
+flat-rgba     decode     1526200 / 3420500 / 2.241187  1415200 / 3234500 / 2.285543  1513000 / 3515300 / 2.323397  1536100 / 3583900 / 2.333116  1530900 / 3641800 / 2.378862
+gradient-rgb  encode     8406600 / 9930599 / 1.181286  6958700 / 9065099 / 1.302700  7204300 / 9247700 / 1.283636  7043100 / 9034000 / 1.282674  7045800 / 9074799 / 1.287973
+gradient-rgb  decode     4267000 / 8516200 / 1.995828  4205700 / 8706700 / 2.070214  4118900 / 8536300 / 2.072471  4469500 / 9248400 / 2.069225  4273100 / 8910900 / 2.085348
+noise-rgba    encode     4548600 / 9338500 / 2.053049  4516600 / 9446700 / 2.091551  4459800 / 9336200 / 2.093412  4823000 / 10033400 / 2.080323 4615100 / 9508000 / 2.060194
+noise-rgba    decode     4510900 / 7339000 / 1.626948  4249200 / 6999100 / 1.647157  4137300 / 6581500 / 1.590772  4236500 / 6748299 / 1.592895  3930000 / 6412700 / 1.631730
+
+five-run comparison:
+
+fixture       operation  C before    C after     Rust before  Rust after   Rust change  paired Rust/C before -> after  interpretation
+flat-rgba     encode     1051400 ns  1042800 ns  4032200 ns   4090600 ns   +1.4483%     3.823865x -> 3.892868x          encoder control drift
+flat-rgba     decode     1457600 ns  1526200 ns  3323500 ns   3515300 ns   +5.7710%     2.299721x -> 2.323397x          RUN-heavy control drift; ranges overlap
+gradient-rgb  encode     6990600 ns  7045800 ns  9099500 ns   9074799 ns   -0.2715%     1.299883x -> 1.283636x          encoder control drift
+gradient-rgb  decode     4167500 ns  4267000 ns  8645300 ns   8706700 ns   +0.7102%     2.061332x -> 2.070214x          RGB decode control; ranges overlap
+noise-rgba    encode     4547300 ns  4548600 ns  9330000 ns   9446700 ns   +1.2508%     2.078293x -> 2.080323x          encoder control drift
+noise-rgba    decode     3964900 ns  4236500 ns  6727700 ns   6748299 ns   +0.3062%     1.690787x -> 1.626948x          intended effect; paired ratio 3.7757% better
+
+run-to-run ranges (minimum-maximum per-run median):
+
+fixture       operation  C before range       C after range        Rust before range    Rust after range
+flat-rgba     encode     1024000-1127100 ns   996900-1210000 ns    3951200-4190400 ns    3880800-4342500 ns
+flat-rgba     decode     1422300-1540100 ns   1415200-1536100 ns   3274000-3541800 ns    3234500-3641800 ns
+gradient-rgb  encode     6877100-8960699 ns   6958700-8406600 ns   9027200-11574599 ns   9034000-9930599 ns
+gradient-rgb  decode     4127200-4232000 ns   4118900-4469500 ns   8483900-8811100 ns    8516200-9248400 ns
+noise-rgba    encode     4440300-4892800 ns   4459800-4823000 ns   9245601-10137500 ns   9336200-10033400 ns
+noise-rgba    decode     3931700-4047700 ns   3930000-4510900 ns   6692900-6843800 ns    6412700-7339000 ns
+
+paired noise-RGBA decode ratio ranges:
+- baseline: 1.688001x-1.711143x
+- optimized: 1.590772x-1.647157x
+- ranges do not overlap; all five paired ratios improved
+
+hardware counters (perf stat -r 10, 500 noise-RGBA decodes per process):
+
+implementation  phase   cycles        instructions   branches      branch misses  cache refs   cache misses  process time
+Rust            before  12408731582   46025678886    6334046378    2081270        180137107    121018068     4.110508 s
+Rust            after   12165300177   44455684377    5810714847    2084370        181292787    116941406     3.999074 s
+Rust            change  -1.9618%      -3.4111%       -8.2622%      +0.1489%       +0.6415%     -3.3686%      -2.7110%
+C               before  7140166821    27667591520    3716607449    2058636        178440706    114474256     2.360426 s
+C               after   7113288774    27664457890    3715562923    2056340        179609736    107564513     2.339189 s
+C               change  -0.3764%      -0.0113%       -0.0281%      -0.1115%       +0.6552%     -6.0361%      -0.8997%
+
+assembly mechanism:
+- baseline RGBA hot block: 12 instructions, 2 safety branches, 1 cursor store
+- optimized RGBA hot block: 9 instructions, 1 safety branch, 1 cursor store
+- expected instruction reduction for 500 decodes: 3 * 1044574 * 500 = 1566861000
+- observed instruction reduction: 1569994509
+- expected branch reduction for 500 decodes: 1 * 1044574 * 500 = 522287000
+- observed branch reduction: 523331531
+- inlined operand-helper sampling: 14.88% before, 6.51% after
+
+fuzzing:
+tested commit: 263f524ea32cb4c18bba08fbbe19920ad63421d7
+nightly rust: rustc 1.99.0-nightly (73dc9167f 2026-08-01)
+nightly cargo: cargo 1.99.0-nightly (7c83d4cc0 2026-07-29)
+cargo-fuzz: 0.13.2
+differential: 1400022 executions, 301 seconds, final corpus 126 inputs / 953 bytes, 0 crashes
+decode_arbitrary: 1278609 executions, 301 seconds, final corpus 75 inputs / 7934 bytes, 0 crashes
+
+correctness:
+- ./scripts/verify.sh passed at the fuzzed/measured commit (47 tests)
+- focused boundary addition passed (48 tests)
+- deterministic C/Rust differential suite passed
+- no unsafe Rust and #![forbid(unsafe_code)] remains
+- no production dependency, public API, encoder, RUN, output, hash, index, or allocation change
+- strict malformed-input and trailing-data validation unchanged
+
+raw baseline output: /tmp/qoi-rgba-read-baseline/run-{1,2,3,4,5}.txt
+raw optimized output: /tmp/qoi-rgba-read-after/run-{1,2,3,4,5}.txt
+raw profiles/counters: /tmp/{rust,c}-noise-rgba-read{,-after}*
+checksum in every normal benchmark run: 0000000001a8c354
