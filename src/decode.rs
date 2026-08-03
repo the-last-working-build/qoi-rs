@@ -438,6 +438,83 @@ mod tests {
     }
 
     #[test]
+    fn decodes_run_followed_by_another_opcode() {
+        let diff = OP_DIFF | (3 << 4) | (2 << 2) | 1;
+        let input = file(4, 1, Channels::Rgb, &[OP_RGB, 10, 20, 30, OP_RUN | 1, diff]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(
+            image.pixels,
+            vec![10, 20, 30, 10, 20, 30, 10, 20, 30, 11, 20, 29]
+        );
+    }
+
+    #[test]
+    fn decodes_multiple_adjacent_run_chunks() {
+        let input = file(
+            6,
+            1,
+            Channels::Rgb,
+            &[OP_RGB, 1, 2, 3, OP_RUN | 1, OP_RUN | 2],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, [1, 2, 3].repeat(6));
+    }
+
+    #[test]
+    fn decodes_run_to_requested_rgb() {
+        let input = file(3, 1, Channels::Rgba, &[OP_RGBA, 1, 2, 3, 4, OP_RUN | 1]);
+
+        let image = decode(&input, Some(Channels::Rgb)).expect("decode should succeed");
+
+        assert_eq!(image.pixels, [1, 2, 3].repeat(3));
+        assert_eq!(image.output_channels, Channels::Rgb);
+    }
+
+    #[test]
+    fn decodes_run_to_requested_rgba() {
+        let input = file(3, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_RUN | 1]);
+
+        let image = decode(&input, Some(Channels::Rgba)).expect("decode should succeed");
+
+        assert_eq!(image.pixels, [1, 2, 3, 255].repeat(3));
+        assert_eq!(image.output_channels, Channels::Rgba);
+    }
+
+    #[test]
+    fn emitting_run_span_does_not_advance_decoder_cursor() {
+        let chunks = [OP_RGB, 10, 20, 30, OP_RUN | 2, OP_RGB, 1, 2, 3];
+        let mut decoder = Decoder::new(&chunks);
+
+        let first = decoder.next_span().expect("RGB span should decode");
+        assert_eq!(first.count, 1);
+        assert_eq!(decoder.cursor, 4);
+
+        let run = decoder.next_span().expect("RUN span should decode");
+        assert_eq!(run.count, 3);
+        assert_eq!(run.pixel, first.pixel);
+
+        let cursor_after_run_chunk = decoder.cursor;
+        let mut output = Vec::new();
+        for _ in 0..run.count {
+            output.extend_from_slice(&[run.pixel.r, run.pixel.g, run.pixel.b]);
+            assert_eq!(decoder.cursor, cursor_after_run_chunk);
+        }
+
+        assert_eq!(output, [10, 20, 30].repeat(3));
+        let following = decoder
+            .next_span()
+            .expect("following RGB span should decode");
+        assert_eq!(following.pixel.r, 1);
+        assert_eq!(following.pixel.g, 2);
+        assert_eq!(following.pixel.b, 3);
+        assert_eq!(decoder.cursor, chunks.len());
+    }
+
+    #[test]
     fn decodes_run_of_initial_opaque_black_pixel() {
         let input = file(1, 1, Channels::Rgba, &[OP_RUN]);
 
@@ -467,6 +544,13 @@ mod tests {
     #[test]
     fn rejects_unused_chunk_data() {
         let input = file(1, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_INDEX]);
+
+        assert_eq!(decode(&input, None), Err(DecodeError::TrailingData));
+    }
+
+    #[test]
+    fn rejects_unused_chunk_data_after_run_span() {
+        let input = file(2, 1, Channels::Rgb, &[OP_RGB, 1, 2, 3, OP_RUN, OP_DIFF]);
 
         assert_eq!(decode(&input, None), Err(DecodeError::TrailingData));
     }
