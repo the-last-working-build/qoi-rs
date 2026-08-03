@@ -112,7 +112,7 @@ impl<'a> Decoder<'a> {
                 }
             }
             OP_RGBA => {
-                let [r, g, b, a] = self.read_operands()?;
+                let [r, g, b, a] = self.read_rgba_operands()?;
 
                 Pixel { r, g, b, a }
             }
@@ -178,6 +178,18 @@ impl<'a> Decoder<'a> {
         self.cursor = end;
 
         Ok(bytes.try_into().expect("fixed-size slice"))
+    }
+
+    fn read_rgba_operands(&mut self) -> Result<[u8; 4], DecodeError> {
+        let operands = self
+            .chunks
+            .get(self.cursor..)
+            .and_then(|tail| tail.first_chunk::<4>())
+            .ok_or(DecodeError::TruncatedChunk)?;
+
+        self.cursor += operands.len();
+
+        Ok(*operands)
     }
 }
 
