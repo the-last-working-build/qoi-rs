@@ -383,6 +383,98 @@ mod tests {
     }
 
     #[test]
+    fn decodes_index_chunk_from_rgba_pixel() {
+        let pixel = Pixel {
+            r: 1,
+            g: 2,
+            b: 3,
+            a: 4,
+        };
+        let input = file(
+            2,
+            1,
+            Channels::Rgba,
+            &[
+                OP_RGBA,
+                pixel.r,
+                pixel.g,
+                pixel.b,
+                pixel.a,
+                OP_INDEX | pixel.hash() as u8,
+            ],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![1, 2, 3, 4, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn colliding_pixel_replaces_previous_index_entry() {
+        let first = Pixel::default();
+        let second = Pixel {
+            r: 5,
+            g: 1,
+            b: 0,
+            a: 4,
+        };
+        assert_eq!(first.hash(), second.hash());
+
+        let input = file(
+            3,
+            1,
+            Channels::Rgba,
+            &[
+                OP_RGBA,
+                first.r,
+                first.g,
+                first.b,
+                first.a,
+                OP_RGBA,
+                second.r,
+                second.g,
+                second.b,
+                second.a,
+                OP_INDEX | second.hash() as u8,
+            ],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![0, 0, 0, 0, 5, 1, 0, 4, 5, 1, 0, 4]);
+    }
+
+    #[test]
+    fn index_chunk_updates_retrieved_pixels_hash_slot() {
+        let colliding = Pixel {
+            r: 5,
+            g: 1,
+            b: 0,
+            a: 4,
+        };
+        assert_eq!(colliding.hash(), Pixel::default().hash());
+
+        let input = file(
+            3,
+            1,
+            Channels::Rgba,
+            &[
+                OP_RGBA,
+                colliding.r,
+                colliding.g,
+                colliding.b,
+                colliding.a,
+                OP_INDEX | 1,
+                OP_INDEX | Pixel::default().hash() as u8,
+            ],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![5, 1, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn decodes_diff_with_wrapping_arithmetic() {
         let diff = OP_DIFF | (1 << 4) | (2 << 2) | 3;
         let input = file(1, 1, Channels::Rgba, &[diff]);
@@ -390,6 +482,22 @@ mod tests {
         let image = decode(&input, None).expect("decode should succeed");
 
         assert_eq!(image.pixels, vec![255, 0, 1, 255]);
+    }
+
+    #[test]
+    fn decodes_index_after_wrapping_diff() {
+        let pixel = Pixel {
+            r: 255,
+            g: 0,
+            b: 1,
+            a: 255,
+        };
+        let diff = OP_DIFF | (1 << 4) | (2 << 2) | 3;
+        let input = file(2, 1, Channels::Rgba, &[diff, OP_INDEX | pixel.hash() as u8]);
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![255, 0, 1, 255, 255, 0, 1, 255]);
     }
 
     #[test]
@@ -420,6 +528,26 @@ mod tests {
         let image = decode(&input, None).expect("decode should succeed");
 
         assert_eq!(image.pixels, vec![216, 224, 216, 255]);
+    }
+
+    #[test]
+    fn decodes_index_after_wrapping_luma() {
+        let pixel = Pixel {
+            r: 216,
+            g: 224,
+            b: 216,
+            a: 255,
+        };
+        let input = file(
+            2,
+            1,
+            Channels::Rgba,
+            &[OP_LUMA, 0, OP_INDEX | pixel.hash() as u8],
+        );
+
+        let image = decode(&input, None).expect("decode should succeed");
+
+        assert_eq!(image.pixels, vec![216, 224, 216, 255, 216, 224, 216, 255]);
     }
 
     #[test]
@@ -484,6 +612,8 @@ mod tests {
     #[test]
     fn run_chunk_indexes_the_current_pixel() {
         let initial_hash = Pixel::INITIAL.hash() as u8;
+
+        assert_eq!(initial_hash, 53);
 
         let input = file(2, 1, Channels::Rgba, &[OP_RUN, OP_INDEX | initial_hash]);
 
