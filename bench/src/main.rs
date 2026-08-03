@@ -36,6 +36,17 @@ unsafe extern "C" {
 }
 
 fn main() {
+    let mut args = std::env::args();
+    let program = args.next().unwrap_or_else(|| "qoi-rs-bench".to_owned());
+
+    match args.next().as_deref() {
+        None => run_benchmark(),
+        Some("profile") => run_profile(&program, args),
+        Some(_) => profile_usage(&program),
+    }
+}
+
+fn run_benchmark() {
     let fixtures = [
         Fixture::flat_rgba(),
         Fixture::gradient_rgb(),
@@ -131,6 +142,102 @@ fn main() {
     println!("checksum: {checksum:016x}");
 }
 
+#[derive(Clone, Copy)]
+enum Implementation {
+    Rust,
+    C,
+}
+
+impl Implementation {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "rust" => Some(Self::Rust),
+            "c" => Some(Self::C),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Operation {
+    Encode,
+    Decode,
+}
+
+impl Operation {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "encode" => Some(Self::Encode),
+            "decode" => Some(Self::Decode),
+            _ => None,
+        }
+    }
+}
+
+fn run_profile(program: &str, mut args: impl Iterator<Item = String>) {
+    let implementation_name = args.next().unwrap_or_else(|| profile_usage(program));
+    let operation_name = args.next().unwrap_or_else(|| profile_usage(program));
+    let fixture_name = args.next().unwrap_or_else(|| profile_usage(program));
+    let iterations_text = args.next().unwrap_or_else(|| profile_usage(program));
+
+    if args.next().is_some() {
+        profile_usage(program);
+    }
+
+    let implementation =
+        Implementation::parse(&implementation_name).unwrap_or_else(|| profile_usage(program));
+    let operation = Operation::parse(&operation_name).unwrap_or_else(|| profile_usage(program));
+    let fixture = Fixture::named(&fixture_name).unwrap_or_else(|| profile_usage(program));
+    let iterations = iterations_text
+        .parse::<usize>()
+        .ok()
+        .filter(|iterations| *iterations > 0)
+        .unwrap_or_else(|| profile_usage(program));
+
+    let c_encoded = c_encode(&fixture.pixels, fixture.desc).expect("C encode should succeed");
+    let rust_encoded = encode(&fixture.pixels, fixture.desc).expect("Rust encode should succeed");
+    assert_eq!(rust_encoded, c_encoded, "encoded bytes differ");
+
+    let c_decoded = c_decode(&c_encoded).expect("C decode should succeed");
+    let rust_decoded = decode(&c_encoded, None).expect("Rust decode should succeed");
+    assert_eq!(c_decoded, fixture.pixels, "C decode differs");
+    assert_eq!(rust_decoded.pixels, fixture.pixels, "Rust decode differs");
+
+    let mut checksum = 0u64;
+
+    for _ in 0..iterations {
+        let token = match (implementation, operation) {
+            (Implementation::Rust, Operation::Encode) => {
+                let encoded = encode(&fixture.pixels, fixture.desc).expect("Rust encode");
+                observe(&encoded)
+            }
+            (Implementation::C, Operation::Encode) => {
+                c_encode_observed(&fixture.pixels, fixture.desc)
+            }
+            (Implementation::Rust, Operation::Decode) => {
+                let decoded = decode(&c_encoded, None).expect("Rust decode");
+                observe(&decoded.pixels)
+            }
+            (Implementation::C, Operation::Decode) => c_decode_observed(&c_encoded),
+        };
+
+        checksum = checksum
+            .wrapping_mul(0x9e37_79b1_85eb_ca87)
+            .wrapping_add(black_box(token));
+    }
+
+    println!("profile: {implementation_name} {operation_name} {fixture_name} {iterations}");
+    println!("checksum: {checksum:016x}");
+}
+
+fn profile_usage(program: &str) -> ! {
+    eprintln!(
+        "usage: {program} profile <rust|c> <encode|decode> \
+         <flat-rgba|gradient-rgb|noise-rgba> <iterations>"
+    );
+    std::process::exit(2);
+}
+
 struct Fixture {
     name: &'static str,
     desc: ImageDesc,
@@ -138,6 +245,15 @@ struct Fixture {
 }
 
 impl Fixture {
+    fn named(name: &str) -> Option<Self> {
+        match name {
+            "flat-rgba" => Some(Self::flat_rgba()),
+            "gradient-rgb" => Some(Self::gradient_rgb()),
+            "noise-rgba" => Some(Self::noise_rgba()),
+            _ => None,
+        }
+    }
+
     fn flat_rgba() -> Self {
         let mut pixels = Vec::with_capacity(pixel_len(Channels::Rgba));
 
