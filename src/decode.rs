@@ -43,9 +43,19 @@ pub fn decode(
     let chunks = &input[HEADER_SIZE..marker_start];
     let mut decoder = Decoder::new(chunks);
 
-    for _ in 0..expected_pixels {
-        let pixel = decoder.next_pixel()?;
-        write_pixel(&mut pixels, pixel, output_channels);
+    match output_channels {
+        Channels::Rgb => {
+            for _ in 0..expected_pixels {
+                let pixel = decoder.next_pixel()?;
+                pixels.extend_from_slice(&[pixel.r, pixel.g, pixel.b]);
+            }
+        }
+        Channels::Rgba => {
+            for _ in 0..expected_pixels {
+                let pixel = decoder.next_pixel()?;
+                pixels.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
+            }
+        }
     }
 
     if decoder.run_remaining != 0 {
@@ -188,16 +198,6 @@ fn output_len(desc: ImageDesc, output_channels: Channels) -> Result<usize, Decod
     }
 
     Ok(len)
-}
-
-fn write_pixel(pixels: &mut Vec<u8>, pixel: Pixel, output_channels: Channels) {
-    pixels.push(pixel.r);
-    pixels.push(pixel.g);
-    pixels.push(pixel.b);
-
-    if output_channels == Channels::Rgba {
-        pixels.push(pixel.a);
-    }
 }
 
 #[cfg(test)]
